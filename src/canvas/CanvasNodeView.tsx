@@ -10,7 +10,7 @@ import { resourceFromNode } from "./operations";
 import { timelineDuration } from "./timeline";
 import { SubjectNodeCard } from "./SubjectNodeCard";
 import { CanvasIcon } from "./CanvasIcon";
-import { useAssetMedia } from "./useAssetMedia.tsx";
+import { AssetMediaActive, useAssetMedia, useInViewport } from "./useAssetMedia.tsx";
 import { TooltipButton } from "./TooltipButton";
 import { GeneratingOverlay } from "./GeneratingOverlay";
 import { TimelinePendingVideo } from "./TimelineOutput";
@@ -51,8 +51,10 @@ function CanvasNodeContents({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   const actions = useContext(CanvasActionsContext);
   const kind = data.kind;
   const hasAsset = Boolean(data.src) && data.assetState !== "missing";
+  const [viewportProbe, inViewport] = useInViewport<HTMLSpanElement>();
   const media = useAssetMedia(
     ["image", "video", "audio"].includes(kind) ? data.src : undefined,
+    inViewport,
   );
   const mediaPending = Boolean(data.src) && media.state !== "ready";
   const locked = Boolean(actions?.isLocked(id));
@@ -70,6 +72,7 @@ function CanvasNodeContents({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   if (data.timelineOutput) return <TimelinePendingVideo id={id} selected={selected} output={data.timelineOutput} />;
 
   return (
+    <AssetMediaActive.Provider value={inViewport}>
     <NodeFrame
       id={id}
       kind={kind}
@@ -82,6 +85,11 @@ function CanvasNodeContents({ id, data, selected }: NodeProps<CanvasFlowNode>) {
       }
       busy={Boolean(activity)}
     >
+      <span
+        ref={viewportProbe}
+        className="cw-node-viewport-probe"
+        aria-hidden="true"
+      />
       {kind === "group" ? (
         <div className="cw-group-interior" />
       ) : kind === "subject" ? (
@@ -289,6 +297,7 @@ function CanvasNodeContents({ id, data, selected }: NodeProps<CanvasFlowNode>) {
         />
       )}
     </NodeFrame>
+    </AssetMediaActive.Provider>
   );
 }
 

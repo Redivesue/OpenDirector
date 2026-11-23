@@ -14,6 +14,7 @@ import type {
 import {
   CreationClient,
   CreationCommandError,
+  MEDIA_PRIORITY,
   assetReference,
   type CreationOperation,
 } from "../src/backend/creationClient.ts";
@@ -1706,5 +1707,71 @@ test("an upload rejected for a lapsed lease is renewed and resent with the same 
   } finally {
     globalThis.fetch = fetch;
     setLeaseRecovery(undefined);
+  }
+});
+
+test("display reads stop only after every on-screen consumer leaves", async () => {
+  const original = globalThis.fetch;
+  const { client, snapshot } = mediaFixture();
+  const image = snapshot.assets.find((asset) => asset.kind === "image")!;
+  const signals: AbortSignal[] = [];
+  globalThis.fetch = (async (_url, options) => {
+    signals.push(options!.signal!);
+    return new Promise<Response>((_, reject) => {
+      options!.signal!.addEventListener("abort", () =>
+        reject(options!.signal!.reason),
+      );
+    });
+  }) as typeof fetch;
+  try {
+    const first = new AbortController();
+    const second = new AbortController();
+    const visible = { priority: MEDIA_PRIORITY.visible };
+    const reads = [
+      client.mediaUrl(image.id, { ...visible, signal: first.signal }),
+      client.mediaUrl(image.id, { ...visible, signal: second.signal }),
+    ];
+    const settled = Promise.allSettled(reads);
+    await new Promise((resolve) => setTimeout(resolve));
+    assert.equal(signals.length, 1);
+    first.abort();
+    await new Promise((resolve) => setTimeout(resolve));
+    assert.equal(signals[0]!.aborted, false);
+    second.abort();
+    await settled;
+    await new Promise((resolve) => setTimeout(resolve));
+    assert.equal(signals[0]!.aborted, true);
+    // Scrolling away says nothing about the file, so the node stays available.
+    assert.equal(client.mediaUnavailable(image.id), false);
+  } finally {
+    client.close();
+    globalThis.fetch = original;
+  }
+});
+
+test("a failed display read is reported and recovers on retry", async () => {
+  const original = globalThis.fetch;
+  const { client, snapshot } = mediaFixture();
+  const image = snapshot.assets.find((asset) => asset.kind === "image")!;
+  let healthy = false;
+  let notifications = 0;
+  client.listenMedia(() => (notifications += 1));
+  globalThis.fetch = (async () =>
+    healthy
+      ? new Response("bytes", { headers: { "content-type": "image/png" } })
+      : Response.json(
+          { code: "storage_unavailable", detail: "missing" },
+          { status: 409 },
+        )) as typeof fetch;
+  try {
+    await assert.rejects(client.mediaUrl(image.id));
+    assert.equal(client.mediaUnavailable(image.id), true);
+    healthy = true;
+    assert.match(await client.mediaUrl(image.id), /^blob:/);
+    assert.equal(client.mediaUnavailable(image.id), false);
+    assert.equal(notifications, 2);
+  } finally {
+    client.close();
+    globalThis.fetch = original;
   }
 });

@@ -46,18 +46,23 @@ async function seedProjects(browser) {
     const ready = image("Ready", 880, 170 + Math.random() * 40);
     const hidden = image("Hidden", 40, 250 + Math.random() * 40);
     const text = createNode("text", { x: 40, y: 520 }, { title: "Words", text: "Authoritative text" });
-    first.nodes = [delayed, failed, ready, text];
+    const far = image("Far", 3000, 45 + Math.random() * 20);
+    first.nodes = [delayed, failed, ready, text, far];
     first.hiddenNodes = [hidden];
     const second = createDocument(`Progressive B ${suffix}`);
     const other = image("Other", 40, 320 + Math.random() * 30);
     second.nodes = [other];
     const a = await importWorkspaceDocument(first);
+    // A saved viewport keeps the far node off screen when the canvas opens.
+    const { creationClient } = await import("/src/backend/creationClient.ts");
+    await creationClient(a.id).view({ viewport: { x: 0, y: 0, zoom: 1 } });
     const b = await importWorkspaceDocument(second);
     // Importing leaves this page's lease on B; closing the page must not be the only release.
     await releaseBackendProject();
     return {
+      viewClientId: sessionStorage.getItem("opendirector.creation.viewClientId"),
       a: { id: a.id, name: a.title }, b: { id: b.id, name: b.title },
-      delayed: delayed.id, failed: failed.id, ready: ready.id, hidden: hidden.id, text: text.id, other: other.id,
+      delayed: delayed.id, failed: failed.id, ready: ready.id, hidden: hidden.id, far: far.id, text: text.id, other: other.id,
     };
   });
   await seed.close();
@@ -71,12 +76,16 @@ async function verifyLocale(browser, locale) {
   const delayedAsset = assetOf(before, fixture.delayed);
   const failedAsset = assetOf(before, fixture.failed);
   const hiddenAsset = assetOf(before, fixture.hidden);
+  const farAsset = assetOf(before, fixture.far);
   const context = await browser.newContext({ locale, viewport: { width: 1500, height: 1000 } });
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.addInitScript(() => localStorage.setItem("opendirector.modelSetup.v1", "dismissed"));
+  await page.addInitScript((id) => {
+    localStorage.setItem("opendirector.modelSetup.v1", "dismissed");
+    sessionStorage.setItem("opendirector.creation.viewClientId", id);
+  }, fixture.viewClientId);
   const release = Promise.withResolvers();
   const failing = new Set([failedAsset]);
   const requested = new Set();
@@ -113,6 +122,7 @@ async function verifyLocale(browser, locale) {
   await node(fixture.failed).getByText(text.failed).waitFor();
   assert.equal(await node(fixture.hidden).count(), 0);
   assert.ok(!requested.has(hiddenAsset), "A hidden node must not read its media");
+  assert.ok(!requested.has(farAsset), "An off-screen node must wait for the viewport");
 
   // Editing while media loads saves structure only.
   const box = await node(fixture.delayed).boundingBox();
@@ -148,9 +158,18 @@ async function verifyLocale(browser, locale) {
   await decoded(fixture.delayed);
   await decoded(fixture.failed);
   const after = await snapshot(fixture.a.id);
-  for (const id of [fixture.delayed, fixture.failed, fixture.ready, fixture.hidden])
+  for (const id of [fixture.delayed, fixture.failed, fixture.ready, fixture.hidden, fixture.far])
     assert.equal(assetOf(after, id), assetOf(before, id), "Reopening must keep every asset binding");
   assert.equal(after.assets.length, before.assets.length);
+
+  // Media loads when its node reaches the viewport.
+  assert.ok(!requested.has(farAsset));
+  await page.mouse.move(750, 500);
+  for (let step = 0; step < 12 && !requested.has(farAsset); step++) {
+    await page.mouse.wheel(1200, 0);
+    await page.waitForTimeout(120);
+  }
+  await decoded(fixture.far);
   assert.deepEqual(errors, []);
   await context.close();
 }

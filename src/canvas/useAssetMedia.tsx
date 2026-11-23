@@ -1,20 +1,60 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useState,
   type ComponentProps,
   type ElementType,
 } from "react";
 import { parseAssetSource } from "../backend/assetSource.ts";
-import { creationClient } from "../backend/creationClient.ts";
+import { creationClient, MEDIA_PRIORITY } from "../backend/creationClient.ts";
 
 export type AssetMediaState = "loading" | "ready" | "failed";
 
-/** Resolves a media field for display. Inline and object URLs pass through. */
+/** False for media inside a canvas node that is away from the viewport. */
+export const AssetMediaActive = createContext(true);
+
+const viewportCallbacks = new WeakMap<Element, (visible: boolean) => void>();
+let viewportObserver: IntersectionObserver | undefined;
+
+function observeViewport(element: Element, callback: (visible: boolean) => void) {
+  // One observer serves every canvas node, including nearby off-screen nodes.
+  viewportObserver ??= new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries)
+        viewportCallbacks.get(entry.target)?.(entry.isIntersecting);
+    },
+    { rootMargin: "160px" },
+  );
+  viewportCallbacks.set(element, callback);
+  viewportObserver.observe(element);
+  return () => {
+    viewportObserver?.unobserve(element);
+    viewportCallbacks.delete(element);
+  };
+}
+
+export function useInViewport<T extends Element>() {
+  const [element, setElement] = useState<T | null>(null);
+  const [visible, setVisible] = useState(
+    typeof IntersectionObserver === "undefined",
+  );
+  useEffect(
+    () => (element ? observeViewport(element, setVisible) : undefined),
+    [element],
+  );
+  return [setElement, visible] as const;
+}
+
+/** Resolves a media field for display. Inline and object URLs pass through.
+ * Leaving the viewport cancels a read nothing else is waiting for. */
 export function useAssetMedia(
   source: string | null | undefined,
-  active = true,
+  active?: boolean,
 ): { src?: string; state: AssetMediaState; retry: () => void } {
+  const inherited = useContext(AssetMediaActive);
+  const enabled = active ?? inherited;
   const asset = parseAssetSource(source);
   const [loaded, setLoaded] = useState<{
     source: string;
@@ -24,20 +64,21 @@ export function useAssetMedia(
   const projectId = asset?.projectId;
   const assetId = asset?.assetId;
   useEffect(() => {
-    if (!projectId || !assetId || !active) return;
-    let current = true;
+    if (!projectId || !assetId || !enabled) return;
+    const controller = new AbortController();
     creationClient(projectId)
-      .mediaUrl(assetId)
+      .mediaUrl(assetId, {
+        signal: controller.signal,
+        priority: MEDIA_PRIORITY.visible,
+      })
       .then((src) => {
-        if (current) setLoaded({ source: source!, src });
+        if (!controller.signal.aborted) setLoaded({ source: source!, src });
       })
       .catch(() => {
-        if (current) setLoaded({ source: source! });
+        if (!controller.signal.aborted) setLoaded({ source: source! });
       });
-    return () => {
-      current = false;
-    };
-  }, [source, projectId, assetId, active, attempt]);
+    return () => controller.abort();
+  }, [source, projectId, assetId, enabled, attempt]);
   const retry = useCallback(() => {
     setLoaded(undefined);
     setAttempt((value) => value + 1);
