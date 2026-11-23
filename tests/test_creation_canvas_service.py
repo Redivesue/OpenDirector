@@ -619,3 +619,11 @@ def test_job_status_includes_delivery_from_the_same_snapshot():
     assert view['delivery']['adopted'] is True
     assert [item['id'] for item in view['delivery']['canvasItems']] == [str(snapshot.canvasItems[-3].id)]
     assert 'Inspect this existing asset directly' in view['delivery']['guidance']
+
+
+def test_open_text_contents_isolate_one_unreadable_body(project):
+    store, pid, _ = project
+    _, readable = text_material(project, title='Readable', text='\ufeffkept')
+    _, broken = text_material(project, title='Broken', text='lost')
+    (store.root / 'Unified' / 'assets' / str(broken.id)).write_text('changed')
+    assert CreationCanvas(store).text_contents(store.snapshot(pid)) == {str(readable.id): 'kept'}

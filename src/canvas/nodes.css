@@ -316,6 +316,7 @@
   opacity: 0;
   transition: opacity 0.15s;
 }
+.cw-node-media-status .cw-placeholder-label,
 .cw-node-placeholder:hover .cw-placeholder-label,
 .cw-node-selected .cw-placeholder-label {
   opacity: 1;
