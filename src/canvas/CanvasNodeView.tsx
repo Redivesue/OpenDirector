@@ -10,6 +10,7 @@ import { resourceFromNode } from "./operations";
 import { timelineDuration } from "./timeline";
 import { SubjectNodeCard } from "./SubjectNodeCard";
 import { CanvasIcon } from "./CanvasIcon";
+import { useAssetMedia } from "./useAssetMedia.tsx";
 import { TooltipButton } from "./TooltipButton";
 import { GeneratingOverlay } from "./GeneratingOverlay";
 import { TimelinePendingVideo } from "./TimelineOutput";
@@ -50,6 +51,10 @@ function CanvasNodeContents({ id, data, selected }: NodeProps<CanvasFlowNode>) {
   const actions = useContext(CanvasActionsContext);
   const kind = data.kind;
   const hasAsset = Boolean(data.src) && data.assetState !== "missing";
+  const media = useAssetMedia(
+    ["image", "video", "audio"].includes(kind) ? data.src : undefined,
+  );
+  const mediaPending = Boolean(data.src) && media.state !== "ready";
   const locked = Boolean(actions?.isLocked(id));
   const activity = ["text", "image", "video", "audio"].includes(kind)
     ? actions?.generationActivity(id)
@@ -71,7 +76,9 @@ function CanvasNodeContents({ id, data, selected }: NodeProps<CanvasFlowNode>) {
       title={data.title || t(kindNameKeys[kind])}
       selected={selected}
       empty={
-        kind === "subject" ? !data.subject?.main?.src : !hasAsset && !data.text
+        kind === "subject"
+          ? !data.subject?.main?.src
+          : !hasAsset && !mediaPending && !data.text
       }
       busy={Boolean(activity)}
     >
@@ -113,12 +120,41 @@ function CanvasNodeContents({ id, data, selected }: NodeProps<CanvasFlowNode>) {
             )}
           </div>
         )
+      ) : mediaPending ? (
+        <div
+          className="cw-node-placeholder cw-node-media-status"
+          role="status"
+          aria-busy={media.state === "loading"}
+        >
+          <span className="cw-placeholder-symbol">
+            <CanvasIcon name={kind} size={20} />
+          </span>
+          <span className="cw-placeholder-label">
+            {t(
+              media.state === "loading"
+                ? "canvasNodes.media.loading"
+                : "canvasNodes.media.failed",
+            )}
+          </span>
+          {media.state === "failed" && (
+            <button
+              type="button"
+              className="cw-placeholder-upload nodrag nopan"
+              onClick={(event) => {
+                event.stopPropagation();
+                media.retry();
+              }}
+            >
+              {t("canvasNodes.media.retry")}
+            </button>
+          )}
+        </div>
       ) : hasAsset ? (
         <div className="cw-node-media">
           {kind === "image" && (
             <img
               className="cw-image-preview"
-              src={data.src}
+              src={media.src}
               alt={data.title}
               draggable={false}
               onLoad={(event) =>
@@ -132,7 +168,7 @@ function CanvasNodeContents({ id, data, selected }: NodeProps<CanvasFlowNode>) {
           {kind === "video" && (
             <CanvasVideoPreview
               className="cw-video-preview"
-              src={data.src}
+              src={media.src}
               playsInline
               preload="metadata"
               selected={selected}
@@ -165,7 +201,7 @@ function CanvasNodeContents({ id, data, selected }: NodeProps<CanvasFlowNode>) {
               </div>
               <audio
                 className="nodrag nopan"
-                src={data.src}
+                src={media.src}
                 controls
                 preload="metadata"
                 onClick={selectMedia}

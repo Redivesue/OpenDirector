@@ -826,6 +826,24 @@ class CreationCanvas:
 
         return check_asset
 
+    def text_contents(self, snapshot):
+        """Text shown by canvas items, read with the snapshot that opens the canvas.
+
+        An unreadable body is left out so only that item reports it.
+        """
+        contents = {}
+        for item in snapshot.canvasItems:
+            asset = current_asset(snapshot, item)
+            if asset is None or asset.kind != 'text' or str(asset.id) in contents:
+                continue
+            try:
+                stream, _ = self.assets.open_media(asset.projectId, asset.id, snapshot=snapshot)
+                with stream:
+                    contents[str(asset.id)] = stream.read().decode('utf-8-sig', 'replace')
+            except (ContractError, ProjectError, OSError):
+                continue
+        return contents
+
     def reference_edges(self, project_id, snapshot=None, check_asset=None):
         """Authoritative canvas reference states for one snapshot.
 

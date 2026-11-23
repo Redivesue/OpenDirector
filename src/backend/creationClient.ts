@@ -22,6 +22,7 @@ import {
   storageRequest,
 } from "./api.ts";
 import { tNow } from "../i18n/messages.ts";
+import { parseAssetSource } from "./assetSource.ts";
 import { abortable, resilientRead, type ReadOptions } from "./resilientRead.ts";
 
 export type CreationOperation = BatchPayloadInput["operations"][number];
@@ -77,6 +78,10 @@ export class CreationClient {
   private subscription: AbortController | undefined;
   private media = new Map<string, Promise<string>>();
   private sourceAssets = new Map<string, string>();
+  /** Bytes behind each object URL. The desktop CSP does not allow fetching blob URLs. */
+  private mediaBytes = new Map<string, Blob>();
+  private unavailableMedia = new Set<string>();
+  private mediaListeners = new Set<() => void>();
   private text = new Map<string, Promise<string>>();
   private submissions: Promise<unknown> = Promise.resolve();
   private deliveries = new Map<string, Record<string, unknown>>();
@@ -134,6 +139,7 @@ export class CreationClient {
             referenceId: string;
             state: "used" | "pending" | "unknown" | "unavailable";
           }[];
+          texts?: Record<string, string>;
         }
       | undefined;
     for (let attempt = 0; ; attempt++) {
@@ -146,6 +152,7 @@ export class CreationClient {
                 referenceId: string;
                 state: "used" | "pending" | "unknown" | "unavailable";
               }[];
+              texts?: Record<string, string>;
             }
         >(`${creationPath(this.id)}/open-canvas`, { method: "POST" });
         // The open-canvas response carries the one authoritative snapshot plus
@@ -158,6 +165,10 @@ export class CreationClient {
           this.referenceStates = new Map(
             canvas.edges.map((edge) => [edge.referenceId, edge.state]),
           );
+        // Text is part of what the structure shows, so projecting it never
+        // waits for a separate read per node.
+        for (const [assetId, text] of Object.entries(canvas?.texts ?? {}))
+          this.text.set(assetId, Promise.resolve(text));
         this.install(canvas ? canvas.snapshot : (opened as ProjectSnapshot));
         break;
       } catch (error) {
@@ -396,15 +407,34 @@ export class CreationClient {
         .then((blob) => {
           const url = URL.createObjectURL(blob);
           this.sourceAssets.set(url, assetId);
+          this.mediaBytes.set(assetId, blob);
+          this.markMedia(assetId, true);
           return url;
         })
         .catch((error) => {
           this.media.delete(assetId);
+          this.markMedia(assetId, false);
           throw error;
         });
       this.media.set(assetId, pending);
     }
     return abortable(pending, options.signal);
+  }
+  private markMedia(assetId: string, available: boolean) {
+    if (available === !this.unavailableMedia.has(assetId)) return;
+    if (available) this.unavailableMedia.delete(assetId);
+    else this.unavailableMedia.add(assetId);
+    for (const listener of this.mediaListeners) listener();
+  }
+  /** Whether the last read of this asset's media failed. */
+  mediaUnavailable(assetId: string) {
+    return this.unavailableMedia.has(assetId);
+  }
+  listenMedia(listener: () => void) {
+    this.mediaListeners.add(listener);
+    return () => {
+      this.mediaListeners.delete(listener);
+    };
   }
   thumbnailUrl(assetId: string) {
     const key = `thumbnail:${assetId}`;
@@ -445,15 +475,36 @@ export class CreationClient {
     this.sourceAssets.set(src, assetId);
   }
   assetForSource(src: string) {
-    const id = this.sourceAssets.get(src);
+    const source = parseAssetSource(src);
+    const id =
+      source?.projectId === this.id
+        ? source.assetId
+        : this.sourceAssets.get(src);
     return this.snapshot.assets.find((asset) => asset.id === id);
   }
-  async originalMedia(src: string, mimeType?: string, signal?: AbortSignal) {
+  async originalMedia(
+    src: string,
+    mimeType?: string,
+    signal?: AbortSignal,
+  ): Promise<Blob> {
+    const source = parseAssetSource(src);
+    if (source && source.projectId !== this.id)
+      return creationClient(source.projectId).originalMedia(src, mimeType, signal);
     const asset = this.assetForSource(src);
     if (asset && ["image/heic", "image/heif"].includes(asset.metadata.mimeType))
       return this.blob(asset.id, { signal });
     if (["image/heic", "image/heif"].includes(mimeType ?? ""))
       throw new Error(tNow("errors.archive.readMedia"));
+    if (source) {
+      // A saved asset that is not on screen is read without retaining a preview.
+      if (!this.media.has(source.assetId))
+        return this.blob(source.assetId, { signal });
+      await this.mediaUrl(source.assetId, { signal });
+      return (
+        this.mediaBytes.get(source.assetId) ??
+        this.blob(source.assetId, { signal })
+      );
+    }
     const response = await fetch(src, { signal });
     if (!response.ok) throw new Error(tNow("errors.archive.readMedia"));
     return response.blob();
@@ -753,6 +804,8 @@ export class CreationClient {
     for (const pending of this.media.values())
       void pending.then(URL.revokeObjectURL, () => {});
     this.media.clear();
+    this.mediaBytes.clear();
+    this.unavailableMedia.clear();
     this.sourceAssets.clear();
     this.text.clear();
   }
@@ -767,6 +820,31 @@ export const creationClient = (id: string) => {
   }
   return client;
 };
+
+/** The browser URL for a media field. Inline and object URLs are returned as is. */
+export async function resolveMediaSource(src: string, signal?: AbortSignal) {
+  const source = parseAssetSource(src);
+  return source
+    ? creationClient(source.projectId).mediaUrl(source.assetId, { signal })
+    : src;
+}
+
+/** Reads a media field. A saved asset is read through its project, and an
+ * object URL is read immediately, before its owner can revoke it. */
+export function fetchMediaSource(
+  src: string,
+  init?: RequestInit & { signal?: AbortSignal },
+): Promise<Response> {
+  const source = parseAssetSource(src);
+  return source
+    ? creationClient(source.projectId)
+        .originalMedia(src, undefined, init?.signal)
+        .then(
+          (blob) =>
+            new Response(blob, { headers: { "Content-Type": blob.type } }),
+        )
+    : fetch(src, init);
+}
 
 export function currentAsset(
   snapshot: ProjectSnapshot,
