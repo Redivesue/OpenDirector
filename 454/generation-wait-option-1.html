@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wait Option 1</title>
+<style>
+:root {
+  --bg: #f6f6f8; --panel: #ffffff; --ink: #1d1f27; --muted: #626775; --line: #e2e3e8;
+  --accent: #3d7be0; --warn: #b4561e; --chip: #eef0f5; --hl: #fff4d6;
+  --canvas: #15171e; --canvas-dot: #262a35;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101116; --panel: #191b22; --ink: #e8e9ee; --muted: #9a9fad; --line: #2b2e38;
+    --accent: #6aa2ff; --warn: #e59a6a; --chip: #23262f; --hl: #3a3220;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101116; --panel: #191b22; --ink: #e8e9ee; --muted: #9a9fad; --line: #2b2e38;
+  --accent: #6aa2ff; --warn: #e59a6a; --chip: #23262f; --hl: #3a3220;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif; }
+header { max-width: 1280px; margin: 0 auto; padding: 24px 16px 8px; display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+header p { margin: 0; color: var(--muted); max-width: 760px; }
+.lang { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.lang button { border: 0; background: var(--panel); color: var(--muted); padding: 6px 12px; cursor: pointer; font: inherit; }
+.lang button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+main { max-width: 1280px; margin: 0 auto; padding: 8px 16px 40px; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0 0 12px; }
+.full { grid-column: 1 / -1; }
+.small { font-size: 12px; color: var(--muted); }
+
+/* ---------- Simulated canvas ---------- */
+.app { border-radius: 12px; overflow: hidden; border: 1px solid #2a2e3a; background: var(--canvas); }
+.stage { position: relative; min-height: 420px; background-color: var(--canvas);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 18px 18px;
+  padding: 48px 16px 70px; }
+.hud { position: absolute; top: 12px; right: 12px; background: #1f222cdd; border: 1px solid #343846; color: #d6d9e2; font-size: 12px; border-radius: 8px; padding: 4px 10px; display: flex; gap: 8px; align-items: center; }
+.hud[hidden] { display: none; }
+.hud .dot { width: 6px; height: 6px; border-radius: 50%; background: #5aa8ff; box-shadow: 0 0 6px #5aa8ff; }
+.modebadge { position: absolute; top: 12px; left: 12px; font-size: 11px; color: #a8adbb; background: #0d0f14aa; border-radius: 6px; padding: 3px 8px; }
+.nodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; align-items: start; max-width: 860px; margin: 0 auto; }
+.nodes.single { grid-template-columns: minmax(0, 400px); justify-content: center; }
+.node-title { color: #a8adbb; font-size: 12px; margin: 0 0 6px 2px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.node-title b { color: #e3e5ec; font-weight: 600; }
+.node-title .took { color: #8fd3a8; }
+.node { position: relative; aspect-ratio: 16 / 9; border-radius: 11px; background: #1f222c; border: 1px solid #343846; overflow: hidden; }
+.node-media { position: absolute; inset: 0; background: linear-gradient(160deg, #2c3c5e 0%, #6a4f7a 45%, #d08a6a 80%, #f1c27d 100%); }
+.node-media.v2 { background: linear-gradient(170deg, #12324a 0%, #1f6d78 50%, #9fd0c0 100%); }
+.node-media.v3 { background: linear-gradient(160deg, #3b2142 0%, #8a3d5c 55%, #e7a46c 100%); }
+.node-media .sun { position: absolute; width: 22%; aspect-ratio: 1; border-radius: 50%; left: 62%; top: 34%; background: #ffe2a6; box-shadow: 0 0 40px #ffcf80; }
+.node-media .hill { position: absolute; left: -10%; right: -10%; bottom: -30%; height: 60%; border-radius: 50%; background: #1d2433; }
+.node-media::after { content: "▶"; position: absolute; right: 10px; bottom: 8px; color: #fff; font-size: 12px; opacity: .8; }
+.arrive { animation: cw-generation-reveal 800ms cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+/* Overlay visuals copied from src/canvas/generating.css on main (63279266) */
+.cw-generating { position: absolute; inset: 0; z-index: 3; overflow: hidden; isolation: isolate; border-radius: 11px; background: #1c202b; pointer-events: none; animation: cw-generation-enter 240ms ease-out both; }
+.cw-generating-field { position: absolute; inset: -25%; filter: blur(26px); opacity: 0.8; }
+.cw-generating-field i { position: absolute; width: 64%; height: 70%; border-radius: 50%; animation: cw-generation-drift 6s ease-in-out infinite alternate; }
+.cw-generating-field i:nth-child(1) { left: -5%; top: 0; background: radial-gradient(ellipse, #708abe 0%, #708abe00 70%); }
+.cw-generating-field i:nth-child(2) { left: 45%; top: 15%; background: radial-gradient(ellipse, #ac8aba 0%, #ac8aba00 70%); animation-delay: -3s; animation-duration: 7s; animation-direction: alternate-reverse; }
+.cw-generating-field i:nth-child(3) { left: 0; top: 50%; background: radial-gradient(ellipse, #71a7a1 0%, #71a7a100 70%); animation-delay: -2s; animation-duration: 5s; }
+.cw-generating-field i:nth-child(4) { left: 45%; top: 55%; background: radial-gradient(ellipse, #c1a896 0%, #c1a89600 70%); animation-delay: -4s; animation-duration: 8s; animation-direction: alternate-reverse; }
+.cw-generating-stars { position: absolute; inset: 0; opacity: 0.42; background-image: radial-gradient(circle at 22% 28%, #e9f1ff 0 1px, transparent 1.8px), radial-gradient(circle at 67% 36%, #f4ebff 0 1px, transparent 1.8px), radial-gradient(circle at 42% 66%, #d9f8ef 0 0.7px, transparent 1.6px), radial-gradient(circle at 80% 72%, #e9f1ff 0 0.7px, transparent 1.6px); animation: cw-generation-stars 3.6s ease-in-out infinite alternate; }
+.cw-generating-sheen { position: absolute; inset: -30%; background: linear-gradient(110deg, transparent 35%, #e9f2ff20 49%, #e9f2ff08 54%, transparent 65%); animation: cw-generation-sweep 3.2s ease-in-out infinite; }
+.cw-generating-caption { position: absolute; bottom: 14px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; color: #f0f0f6; font-size: 11px; line-height: 1.5; text-shadow: 0 1px 6px #000b; }
+.cw-generating-indicator { width: 5px; height: 5px; border-radius: 50%; background: #e2def9; box-shadow: 0 0 9px #dfd7ff9c; animation: cw-generation-stars 1.6s ease-in-out infinite alternate; }
+.cw-generating[data-phase="queued"] .cw-generating-field { opacity: 0.3; }
+.cw-generating[data-phase="queued"] .cw-generating-field i { animation-duration: 12s; }
+.cw-generating[data-phase="queued"] .cw-generating-sheen { display: none; }
+.cw-generating[data-phase="finishing"] .cw-generating-sheen { animation-duration: 1.8s; }
+.cw-generating-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.cw-generating-ring path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.cw-generating-ring-track { stroke: #ffffff14; stroke-width: 2; }
+.cw-generating-ring-progress { stroke: #5aa8ff; stroke-width: 2; filter: drop-shadow(0 0 3px #3d8bffaa); transition: stroke-dashoffset 250ms linear; }
+@keyframes cw-generation-drift { from { transform: translate(-12%, -8%) scale(0.85); } to { transform: translate(15%, 12%) scale(1.2); } }
+@keyframes cw-generation-sweep { from { transform: translateX(-65%); } to { transform: translateX(65%); } }
+@keyframes cw-generation-stars { from { opacity: 0.2; } to { opacity: 0.7; } }
+@keyframes cw-generation-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cw-generation-reveal { from { opacity: 0.25; filter: blur(8px); } to { opacity: 1; filter: blur(0); } }
+
+/* ---------- Option 1: wait facts on the node ---------- */
+.wt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 26px 12px 22px; color: #f0f0f6; text-shadow: 0 1px 6px #000b; text-align: center; }
+.wt-chip { position: absolute; top: 9px; left: 10px; display: inline-flex; gap: 6px; align-items: center; font-size: 11px; background: #0d0f1488; border-radius: 999px; padding: 2px 9px 2px 7px; color: #e3e5ec; max-width: calc(100% - 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wt-big { font-size: 24px; font-weight: 600; letter-spacing: .01em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.wt-big.text { font-size: 16px; }
+.wt-sub { font-size: 12px; color: #dfe3ee; border-radius: 6px; padding: 0 6px; transition: background-color .6s; }
+.wt-sub.warn { color: #ffd2a6; }
+.wt-sub.changed { background: #ffd27a40; }
+.wt-foot { position: absolute; bottom: 8px; left: 10px; right: 10px; font-size: 10.5px; color: #b9bfcc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.cw-generating-ring.overdue .cw-generating-ring-progress { animation: ring-breathe 1.6s ease-in-out infinite alternate; }
+@keyframes ring-breathe { from { opacity: .35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .cw-generating, .cw-generating-field i, .cw-generating-stars, .cw-generating-sheen, .cw-generating-indicator, .arrive, .cw-generating-ring.overdue .cw-generating-ring-progress { animation: none; }
+  .cw-generating-sheen { display: none; }
+  .cw-generating-ring-progress, .wt-sub { transition: none; }
+}
+
+.toasts { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; width: calc(100% - 32px); pointer-events: none; }
+.toast { background: #2b2f3b; color: #eef0f5; font-size: 12px; padding: 8px 12px; border-radius: 8px; box-shadow: 0 6px 20px #0008; max-width: 100%; animation: cw-generation-enter 200ms ease-out both; }
+
+/* ---------- Controls ---------- */
+.controls { display: grid; gap: 12px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
+.seg button { border: 0; border-right: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 6px 10px; cursor: pointer; font: inherit; font-size: 13px; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.btn { border: 1px solid var(--line); background: var(--chip); color: var(--ink); padding: 6px 12px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+label.lbl { font-size: 12px; color: var(--muted); min-width: 56px; }
+input[type=range] { flex: 1; min-width: 140px; accent-color: var(--accent); }
+.clock { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
+.desc { background: var(--chip); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.timeline { display: grid; gap: 3px; font-size: 12.5px; }
+.timeline div { display: grid; grid-template-columns: 52px 1fr; gap: 8px; color: var(--muted); }
+.timeline div.past { color: var(--ink); }
+.timeline div.now { color: var(--accent); font-weight: 600; }
+
+ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td code, li code { font-size: 12px; background: var(--chip); padding: 0 4px; border-radius: 4px; }
+.tag { display: inline-block; font-size: 11px; border-radius: 4px; padding: 0 6px; white-space: nowrap; }
+.tag.ok { background: #d9f2e3; color: #1f6b43; }
+.tag.mid { background: #fdebd3; color: #8a4b12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag.ok { background: #1d3a2a; color: #8fd3a8; } :root:not([data-theme="light"]) .tag.mid { background: #3d2c17; color: #f0b877; } }
+:root[data-theme="dark"] .tag.ok { background: #1d3a2a; color: #8fd3a8; }
+:root[data-theme="dark"] .tag.mid { background: #3d2c17; color: #f0b877; }
+.tablewrap { overflow-x: auto; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* Screenshot mode: ?shot=1 shows only the simulated canvas */
+body.shot { background: #ff00ff; }
+body.shot header, body.shot main > section:not(:first-child), body.shot main > section:first-child > h2, body.shot main > section:first-child > .small { display: none; }
+body.shot main { display: block; padding: 0; max-width: none; margin: 0; }
+body.shot main > section:first-child { border: 0; padding: 0; background: none; border-radius: 0; }
+body.shot .app { border-radius: 0; border: 0; }
+body.shot .stage { min-height: 0; padding-bottom: 28px; }
+body.shot .tabnote, body.shot #nodeModel { display: none; }
+.proto-banner { max-width: 1280px; margin: 12px auto 0; padding: 6px 16px; font-size: 12px; color: var(--muted); }
+.proto-banner a { color: var(--accent); }
+body.shot .proto-banner { display: none; }
+</style>
+</head>
+<body>
+<div class="proto-banner">个人原型，用于 <a href="https://github.com/ThinkFlowLab/OpenDirector/issues/454">#454</a> 讨论，非正式功能 · Personal prototype for discussing <a href="https://github.com/ThinkFlowLab/OpenDirector/issues/454">#454</a>, not a shipped feature</div>
+<header>
+  <div>
+    <h1 data-i18n="title"></h1>
+    <p data-i18n="subtitle"></p>
+  </div>
+  <div class="lang" role="group" aria-label="Language">
+    <button type="button" data-lang="zh-CN">中文</button>
+    <button type="button" data-lang="en-US">English</button>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2 data-i18n="simTitle"></h2>
+    <div class="app">
+      <div class="stage">
+        <span class="modebadge" id="modeBadge"></span>
+        <div class="hud" id="hud" hidden><span class="dot"></span><span id="hudText"></span></div>
+        <div class="nodes" id="nodes"></div>
+        <div class="toasts" id="toasts"></div>
+      </div>
+    </div>
+    <p class="small" data-i18n="simNote" style="margin:10px 0 0"></p>
+  </section>
+
+  <section class="card controls">
+    <h2 data-i18n="ctrlTitle" style="margin:0"></h2>
+    <div class="row"><label class="lbl" data-i18n="view"></label>
+      <div class="seg" id="modeSeg">
+        <button type="button" data-m="today" data-i18n="mToday"></button>
+        <button type="button" data-m="option" data-i18n="mOption"></button>
+      </div>
+    </div>
+    <div class="row"><label class="lbl" data-i18n="scenario"></label>
+      <div class="seg" id="scenarioSeg"></div>
+    </div>
+    <div class="desc" id="scDesc"></div>
+    <div class="row"><label class="lbl" data-i18n="speed"></label>
+      <div class="seg" id="speedSeg">
+        <button type="button" data-x="1">1×</button>
+        <button type="button" data-x="10">10×</button>
+        <button type="button" data-x="30">30×</button>
+      </div>
+      <button class="btn primary" id="playBtn" type="button"></button>
+      <button class="btn" id="resetBtn" type="button" data-i18n="reset"></button>
+    </div>
+    <div class="row"><label class="lbl" data-i18n="scrub"></label><input type="range" id="scrub" min="0" max="1000" value="0" aria-label="scrub"><span class="clock" id="clock">0:00</span></div>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+  <section class="card full">
+    <h2 data-i18n="changeTitle"></h2>
+    <div class="grid2">
+      <div><h3 class="small" data-i18n="changesH" style="margin:0 0 8px"></h3><ul class="plain" id="changes"></ul></div>
+      <div><h3 class="small" data-i18n="rulesH" style="margin:0 0 8px"></h3><ul class="plain" id="rules"></ul></div>
+    </div>
+  </section>
+
+  <section class="card full">
+    <h2 data-i18n="srcTitle"></h2>
+    <div class="tablewrap"><table id="srcTable"></table></div>
+  </section>
+
+  <section class="card full">
+    <h2 data-i18n="openTitle"></h2>
+    <ul class="plain" id="openList"></ul>
+  </section>
+</main>
+
+<script>
+const FIN = 5;   // read & save the result
+const PREP = 2, SUBMIT = 3;
+
+const SCENARIOS = {
+  single: { expected: 180, samples: 6, ext: [], jobs: [{ actual: 172 }] },
+  local3: { expected: 180, samples: 6, ext: [], jobs: [{ actual: 150 }, { actual: 205 }, { actual: 170 }] },
+  server: { expected: 180, samples: 6, ext: [{ actual: 190, ago: 70 }, { actual: 160, ago: 0 }], jobs: [{ actual: 175 }] },
+  slow:   { expected: 180, samples: 6, ext: [], jobs: [{ actual: 290 }] },
+  first:  { expected: 180, samples: 0, ext: [], jobs: [{ actual: 135 }] }
+};
+const SC_ORDER = ["single", "local3", "server", "slow", "first"];
+
+const I18N = {
+  "zh-CN": {
+    title: "方案一：把排队和时间说清楚",
+    subtitle: "#454 的第一个原型。不加娱乐内容，只把用户最关心的三件事放到节点上：排在第几、已经做了多久、大概还要多久。所有数字都来自 OpenDirector 后端或 vLLM-Omni 已有的数据，不需要修改上游。",
+    simTitle: "模拟画布",
+    simNote: "节点的动态背景沿用现有样式；可在右侧“现状 / 方案一”之间切换，对比同一场景下用户能看到的信息。视频结果为示意画面。",
+    ctrlTitle: "回放控制",
+    view: "视图", mToday: "现状", mOption: "方案一",
+    scenario: "场景",
+    sc: { single: "单个视频", local3: "本机 3 个排队", server: "模型服务被占用", slow: "比预计慢", first: "首次使用" },
+    scDesc: {
+      single: "最常见的情况：没有排队，直接生成，耗时接近预计。",
+      local3: "连续提交 3 个视频。本地部署的模型服务一次只跑一个，OpenDirector 会让后面的视频在本机排队。注意第一个视频提前完成后，后面两个的预计时间会跟着更新。",
+      server: "模型服务上已经有 2 个来自其他客户端的任务。提交成功后，任务先在服务端排队。",
+      slow: "这次生成比平时慢很多。方案一不会倒数到负数，也不会假装快好了。",
+      first: "这台机器上还没跑过这个设置，没有历史时长，只能用默认值估计，需要明确告诉用户这是粗估。"
+    },
+    speed: "速度", play: "▶ 播放", pause: "❚❚ 暂停", reset: "重置", scrub: "时间",
+    badgeToday: "现状", badgeOption: "方案一",
+    nodeNames: ["日落海边", "海浪特写", "黄昏人像"],
+    took: "用时 {t}",
+    hud: "视频：{run} 个生成中 · {wait} 个排队",
+    hudRun: "视频：{run} 个生成中",
+    hudDone: "视频：全部完成",
+    toastSubmitted: "生成任务已提交，结果将保存到当前工程。",
+    today: { queued: "排队中", preparing: "正在准备参考", submitting: "正在提交到模型服务", generating: "模型服务生成中", finishing: "正在读取并保存结果" },
+    chip: { local: "本机排队 · 第 {pos} 位", preparing: "准备参考", submitting: "提交中", server: "模型服务排队", generating: "生成中", finishing: "保存结果" },
+    ahead: { one: "前面还有 1 个视频", n: "前面还有 {n} 个视频" },
+    serverAhead: { one: "前面 1 个任务", n: "前面 {n} 个任务" },
+    serverSub: "同一模型服务上的其他请求",
+    startSoon: "即将开始",
+    startsIn: { lt: "1 分钟内开始", n: "约 {n} 分钟后开始" },
+    left: { lt: "预计 1 分钟内完成", n: "预计还需约 {n} 分钟" },
+    doneIn: { lt: "预计 1 分钟内完成", n: "预计约 {n} 分钟后完成" },
+    overdue: "比平时久，仍在生成",
+    almost: "马上就好",
+    basis: "通常约 {x} · 本机最近 {n} 次同设置",
+    basisNone: "暂无本机记录 · 按默认 {x} 粗估",
+    basisShort: "通常约 {x}",
+    tl: { submit: "提交", lockQ: "本机排队", prep: "准备/提交", serverQ: "服务端排队", gen: "生成", fin: "保存", done: "完成" },
+    changeTitle: "方案一改了什么",
+    changesH: "节点上的变化",
+    changes: [
+      "<b>排队时</b>：显示“本机第几位 / 前面几个视频”或“模型服务排队 · 前面几个任务”，以及大约多久后开始。现状只显示“排队中”，提交到服务端后在服务端排队也显示成“生成中”。",
+      "<b>生成时</b>：中间大字显示已生成时长（从真正开始生成算起），下面一行显示大约还需多久。现状只有一圈进度环。",
+      "<b>进度环</b>：只在真正生成时出现，按 已用 ÷ 预计 线性增长，最多到 95%；超出预计后停住并缓慢呼吸，表示仍在进行。现状的环从点击就开始走，排队时间也算在里面。",
+      "<b>预计依据</b>：底部小字说明估计从哪来（本机最近几次同设置，或默认值粗估）。",
+      "<b>完成后</b>：节点标题旁保留“用时 m:ss”，帮助用户对下次等待形成预期。",
+      "<b>画布右上角</b>：多个视频时显示一个汇总：几个生成中、几个排队。"
+    ],
+    rulesH: "显示规则（避免假精确）",
+    rules: [
+      "剩余时间只到分钟：不到 45 秒显示“1 分钟内”，其余四舍五入到“约 N 分钟”。不显示秒级倒计时。",
+      "已用时间用 m:ss 精确显示，这是事实，不是估计。",
+      "超出预计后不再给剩余时间，改为“比平时久，仍在生成”，并继续显示已用时长。",
+      "排队估计随前面任务的实际完成情况重新计算；数字变化时那一行短暂高亮，让用户注意到更新。",
+      "没有历史数据时明确写“粗估”。",
+      "现有动态背景保留，信息叠在上面，不新增页面或弹窗。"
+    ],
+    srcTitle: "每个数字从哪里来",
+    srcHead: ["显示的信息", "数据来源", "需要做的改动", "难度"],
+    src: [
+      ["本机排队位置", "OpenDirector 后端：本地部署的视频按模型服务地址一次只跑一个（<code>generation_runtime.py</code> 的 <code>remote_limits</code>），等待中的任务顺序后端已知。", "任务查询结果里返回排队位置。", "ok"],
+      ["服务端排队 / 前面几个任务", "vLLM-Omni：任务状态 <code>queued</code> → <code>in_progress</code> 由引擎真正开始时切换；<code>GET /v1/videos</code> 列出全部任务，可数出更早创建且未完成的任务。", "适配器保留 queued / in_progress，不再一律当作“生成中”；查询列表估算位置。", "mid"],
+      ["已生成时长", "OpenDirector 后端在任务从 <code>queued</code> 变为 <code>in_progress</code> 时记录开始时间。", "Job 增加开始生成时间；前端按它计时，不再按创建时间。", "ok"],
+      ["预计时长", "vLLM-Omni 完成时返回 <code>inference_time_s</code> 和 <code>stage_durations</code>。", "后端按 模型 + 时长 + 分辨率 学习；现在的估计存在浏览器里，且只按模型区分（4 秒和 10 秒视频共用一个预计值）。", "mid"],
+      ["剩余时间", "预计时长 − 已生成时长；排队时累加前面任务的剩余时间。", "前端计算，规则见上。", "ok"],
+      ["真实进度百分比", "vLLM-Omni 内部有“第几步 / 共几步”，但没有传到接口的 <code>progress</code> 字段。", "不在方案一范围；需要上游 PR，可作为后续阶段。", "mid"]
+    ],
+    tagOk: "小", tagMid: "中",
+    openTitle: "需要确认或验证",
+    open: [
+      "在运行中的 vLLM-Omni 上确认：<code>queued</code> → <code>in_progress</code> 的切换时机，以及 <code>GET /v1/videos</code> 是否包含其他客户端提交的任务。",
+      "其他客户端任务的时长我们不知道，原型里按本机预计值代替；如果服务端排队很常见，需要讨论这个估计是否够用，还是只显示“前面 N 个任务”不给时间。",
+      "模型服务能同时跑多个任务（多卡并发）时，“前面几个”与等待时间不再是简单相加，需要按并发数计算。",
+      "同一节点多个任务时，显示最早完成的那个还是整体完成时间？",
+      "这个方案只解决“等多久”的不确定感。完成通知（标签页标题、提示）和等待时的内容是另外的方向，后续原型再讨论。"
+    ]
+  },
+  "en-US": {
+    title: "Option 1: say clearly where the job is and how long it takes",
+    subtitle: "The first prototype for #454. No entertainment, just the three things users care about most, right on the node: their place in line, how long it has been running, and roughly how long is left. Every number comes from data that OpenDirector's backend or vLLM-Omni already has, with no upstream change.",
+    simTitle: "Simulated canvas",
+    simNote: "The node's animated background is the existing style. Switch between Today and Option 1 on the right to compare what users see in the same scenario. The video result is a stand-in picture.",
+    ctrlTitle: "Playback",
+    view: "View", mToday: "Today", mOption: "Option 1",
+    scenario: "Scenario",
+    sc: { single: "One video", local3: "3 queued locally", server: "Model service busy", slow: "Slower than usual", first: "First run" },
+    scDesc: {
+      single: "The common case: no queue, generation starts right away and takes about as long as expected.",
+      local3: "Three videos submitted in a row. A self-hosted model service runs one at a time, so OpenDirector queues the later ones locally. When the first finishes early, the estimates for the other two update.",
+      server: "The model service already has 2 jobs from other clients, so ours waits in the service's queue after it is submitted.",
+      slow: "This run is much slower than usual. Option 1 never counts down past zero or pretends it's almost done.",
+      first: "This machine has never run these settings, so there's no history and the estimate is a default. Users need to be told it's rough."
+    },
+    speed: "Speed", play: "▶ Play", pause: "❚❚ Pause", reset: "Reset", scrub: "Time",
+    badgeToday: "Today", badgeOption: "Option 1",
+    nodeNames: ["Sunset shore", "Wave close-up", "Portrait at dusk"],
+    took: "took {t}",
+    hud: "Videos: {run} generating · {wait} queued",
+    hudRun: "Videos: {run} generating",
+    hudDone: "Videos: all done",
+    toastSubmitted: "Generation submitted. Results will be saved to this project.",
+    today: { queued: "Queued", preparing: "Preparing references", submitting: "Submitting to the model service", generating: "Generating with the model service", finishing: "Reading and saving the result" },
+    chip: { local: "Queued here · #{pos}", preparing: "Preparing", submitting: "Submitting", server: "Model service queue", generating: "Generating", finishing: "Saving" },
+    ahead: { one: "1 video ahead", n: "{n} videos ahead" },
+    serverAhead: { one: "1 job ahead", n: "{n} jobs ahead" },
+    serverSub: "Other requests on the same model service",
+    startSoon: "Starting soon",
+    startsIn: { lt: "Starts within a minute", n: "Starts in about {n} min" },
+    left: { lt: "Under a minute left", n: "About {n} min left" },
+    doneIn: { lt: "Done within a minute", n: "Done in about {n} min" },
+    overdue: "Taking longer than usual, still working",
+    almost: "Almost done",
+    basis: "Usually about {x} · last {n} runs here",
+    basisNone: "No history yet · rough guess {x}",
+    basisShort: "Usually about {x}",
+    tl: { submit: "Submit", lockQ: "Local queue", prep: "Prepare/submit", serverQ: "Service queue", gen: "Generate", fin: "Save", done: "Done" },
+    changeTitle: "What Option 1 changes",
+    changesH: "On the node",
+    changes: [
+      "<b>While queued:</b> shows “#N here / N videos ahead” or “Model service queue · N jobs ahead”, and roughly when it will start. Today it only says “Queued”, and a job waiting in the service's queue is shown as “Generating”.",
+      "<b>While generating:</b> the big number is time spent generating (from when generation really started), with roughly how long is left below it. Today there's only a progress ring.",
+      "<b>Progress ring:</b> appears only while really generating, grows linearly as elapsed ÷ expected up to 95%, then holds and slowly breathes once past the estimate. Today the ring starts at the click and counts queue time too.",
+      "<b>Estimate basis:</b> small text says where the estimate comes from (recent runs with these settings, or a rough default).",
+      "<b>After it finishes:</b> “took m:ss” stays next to the node title, so users know what to expect next time.",
+      "<b>Canvas corner:</b> with several videos, a summary shows how many are generating and how many are queued."
+    ],
+    rulesH: "Display rules (no false precision)",
+    rules: [
+      "Time left is shown only in minutes: under 45 s reads “within a minute”, otherwise rounded to “about N min”. No per-second countdown.",
+      "Time spent is shown exactly as m:ss. It's a fact, not an estimate.",
+      "Once past the estimate, no time left is given. It reads “Taking longer than usual, still working” and keeps showing the time spent.",
+      "Queue estimates are recalculated from what actually finishes ahead. When a number changes, its line briefly highlights.",
+      "Without history, the estimate is labelled rough.",
+      "The existing animated background stays; the facts sit on top. No new pages or dialogs."
+    ],
+    srcTitle: "Where each number comes from",
+    srcHead: ["Shown", "Source", "Change needed", "Effort"],
+    src: [
+      ["Place in the local queue", "OpenDirector backend: self-hosted video runs one job per model-service address (<code>remote_limits</code> in <code>generation_runtime.py</code>), so the backend already knows the order of waiting jobs.", "Return the queue position in job queries.", "ok"],
+      ["Service queue / jobs ahead", "vLLM-Omni: status flips <code>queued</code> → <code>in_progress</code> when the engine really starts; <code>GET /v1/videos</code> lists every job, so earlier unfinished jobs can be counted.", "Keep queued vs in_progress in the adapter instead of treating both as generating; estimate position from the list.", "mid"],
+      ["Time spent generating", "OpenDirector backend records the start time when the job moves from <code>queued</code> to <code>in_progress</code>.", "Add a generation start time to Job; the UI counts from it instead of the creation time.", "ok"],
+      ["Expected duration", "vLLM-Omni returns <code>inference_time_s</code> and <code>stage_durations</code> on completion.", "Learn it in the backend per model + clip length + resolution. Today it lives in the browser and is keyed by model only, so 4 s and 10 s clips share one estimate.", "mid"],
+      ["Time left", "Expected − spent; while queued, add the remaining time of jobs ahead.", "Computed in the UI, using the rules above.", "ok"],
+      ["True progress percentage", "vLLM-Omni tracks step N of M internally but doesn't pass it to the API's <code>progress</code> field.", "Not in Option 1; needs an upstream PR, a later phase.", "mid"]
+    ],
+    tagOk: "Small", tagMid: "Medium",
+    openTitle: "To confirm or verify",
+    open: [
+      "On a running vLLM-Omni: when <code>queued</code> → <code>in_progress</code> really flips, and whether <code>GET /v1/videos</code> includes other clients' jobs.",
+      "We don't know how long other clients' jobs take; the prototype uses our own estimate for them. If the service queue is common, decide whether that's good enough or we only show “N jobs ahead” with no time.",
+      "When the service runs several jobs at once (multi-GPU), “jobs ahead” and wait time no longer add up simply; they need the concurrency.",
+      "With several jobs on one node, show the earliest finish or the time until all are done?",
+      "This option only addresses not knowing how long to wait. Completion notices (tab title, toasts) and content during the wait are separate directions for later prototypes."
+    ]
+  }
+};
+
+let lang = "zh-CN";
+try { const s = localStorage.getItem("gw1-lang"); if (s && I18N[s]) lang = s; } catch {}
+let scenario = "local3", mode = "option", speed = 10, t = 0, playing = false, last = 0;
+const L = () => I18N[lang];
+const $ = (id) => document.getElementById(id);
+const fmt = (sec) => { sec = Math.max(0, Math.floor(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+const fill = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]);
+const approxMin = (sec) => `${Math.max(1, Math.round(sec / 60))}`;
+const minutes = (sec) => lang === "zh-CN" ? `${Math.round(sec / 60)} 分钟` : `${Math.round(sec / 60)} min`;
+const plural = (tpl, n) => fill(n === 1 ? tpl.one : tpl.n, { n });
+function bucket(tpl, sec) { return sec < 45 ? tpl.lt : fill(tpl.n, { n: approxMin(sec) }); }
+
+// ---------- Simulation ----------
+function plan(sc) {
+  let extStart = 0;
+  const ext = sc.ext.map((e, i) => {
+    const start = i === 0 ? -e.ago : extStart;
+    const end = start + e.actual; extStart = end;
+    return { start, end, actual: e.actual };
+  });
+  const serverFree = ext.length ? ext[ext.length - 1].end : 0;
+  let prevDone = 0;
+  const jobs = sc.jobs.map((j, i) => {
+    const lockAt = i === 0 ? 0 : prevDone;
+    const accepted = lockAt + PREP + SUBMIT;
+    const genStart = i === 0 ? Math.max(accepted, serverFree) : accepted;
+    const genEnd = genStart + j.actual;
+    const doneAt = genEnd + FIN;
+    prevDone = doneAt;
+    return { i, lockAt, accepted, genStart, genEnd, doneAt, actual: j.actual };
+  });
+  return { ext, jobs, end: jobs[jobs.length - 1].doneAt };
+}
+function phaseOf(j, time) {
+  if (time < j.lockAt) return "local";
+  if (time < j.lockAt + PREP) return "preparing";
+  if (time < j.accepted) return "submitting";
+  if (time < j.genStart) return "server";
+  if (time < j.genEnd) return "generating";
+  if (time < j.doneAt) return "finishing";
+  return "done";
+}
+// What the UI would estimate at `time`, using only expected durations and observed facts.
+function extRemaining(P, X, time) {
+  return P.ext.reduce((sum, e) => {
+    if (time >= e.end) return sum;
+    if (time >= e.start) return sum + Math.max(X - (time - e.start), 15);
+    return sum + X;
+  }, 0);
+}
+function remaining(P, X, k, time) {
+  const j = P.jobs[k], ph = phaseOf(j, time);
+  switch (ph) {
+    case "done": return 0;
+    case "finishing": return Math.max(j.doneAt - time, 1);
+    case "generating": return Math.max(X - (time - j.genStart), 15) + FIN;
+    case "server": return extRemaining(P, X, time) + X + FIN;
+    case "preparing": case "submitting": return (j.accepted - time) + (k === 0 ? extRemaining(P, X, time) : 0) + X + FIN;
+    case "local": return remaining(P, X, k - 1, time) + PREP + SUBMIT + X + FIN;
+  }
+}
+
+// ---------- Rendering ----------
+function outline(w, h, inset) {
+  const R = 11, r = Math.max(0, Math.min(R - inset, w / 2, h / 2));
+  const x0 = inset, y0 = inset, x1 = w - inset, y1 = h - inset, k = r * (1 - Math.SQRT1_2);
+  return [`M${x0 + k},${y0 + k}`, `A${r},${r} 0 0 1 ${x0 + r},${y0}`, `H${x1 - r}`, `A${r},${r} 0 0 1 ${x1},${y0 + r}`, `V${y1 - r}`,
+    `A${r},${r} 0 0 1 ${x1 - r},${y1}`, `H${x0 + r}`, `A${r},${r} 0 0 1 ${x0},${y1 - r}`, `V${y0 + r}`, `A${r},${r} 0 0 1 ${x0 + k},${y0 + k}`].join(" ");
+}
+const BG = `<div class="cw-generating-field"><i></i><i></i><i></i><i></i></div><div class="cw-generating-stars"></div><div class="cw-generating-sheen"></div>`;
+const RING = `<svg class="cw-generating-ring" aria-hidden="true"><path class="cw-generating-ring-track" pathLength="100"/><path class="cw-generating-ring-progress" pathLength="100" stroke-dasharray="100 100"/></svg>`;
+
+const nodeState = [];
+function buildNodes() {
+  const sc = SCENARIOS[scenario];
+  $("nodes").className = "nodes" + (sc.jobs.length === 1 ? " single" : "");
+  $("nodes").innerHTML = sc.jobs.map((_, i) => `<div class="node-wrap">
+      <div class="node-title"><span>▣</span><b>${L().nodeNames[i]}</b><span class="took" data-took="${i}"></span></div>
+      <div class="node" data-node="${i}"></div></div>`).join("");
+  nodeState.length = 0;
+  sc.jobs.forEach(() => nodeState.push({ key: "", sub: "" }));
+}
+function setRing(el, prog, overdue) {
+  const svg = el.querySelector("svg"); if (!svg) return;
+  const d = outline(svg.clientWidth, svg.clientHeight, 1);
+  svg.querySelectorAll("path").forEach((p) => p.setAttribute("d", d));
+  svg.querySelector(".cw-generating-ring-progress").setAttribute("stroke-dashoffset", 100 - prog * 100);
+  svg.classList.toggle("overdue", !!overdue);
+}
+function estimatedProgress(elapsed, expected) {
+  if (!(expected > 0) || !(elapsed > 0)) return 0;
+  return 0.97 * (1 - Math.exp((-2.5 * elapsed) / expected));
+}
+const mediaClass = ["", " v2", " v3"];
+
+function renderNodes() {
+  const sc = SCENARIOS[scenario], P = plan(sc), X = sc.expected, started = t > 0 || playing;
+  P.jobs.forEach((j, i) => {
+    const el = document.querySelector(`[data-node="${i}"]`), st = nodeState[i];
+    const ph = started ? phaseOf(j, t) : "idle";
+    const took = document.querySelector(`[data-took="${i}"]`);
+    took.textContent = ph === "done" && mode === "option" ? "· " + fill(L().took, { t: fmt(j.actual) }) : "";
+    const group = ph === "idle" ? "idle" : ph === "done" ? "done" : "gen";
+    const key = `${mode}|${group}|${lang}`;
+    if (key !== st.key) {
+      st.key = key; st.sub = "";
+      if (group === "idle") el.innerHTML = "";
+      else if (group === "done") el.innerHTML = `<div class="node-media arrive${mediaClass[i]}"><div class="sun"></div><div class="hill"></div></div>`;
+      else if (mode === "today") el.innerHTML = `<div class="cw-generating">${BG}${RING}<div class="cw-generating-caption" role="status"><span class="cw-generating-indicator"></span><span class="cap"></span></div></div>`;
+      else el.innerHTML = `<div class="cw-generating">${BG}${RING}<div class="wt" role="status"><span class="wt-chip"><span class="cw-generating-indicator"></span><span class="chip"></span></span><div class="wt-big"></div><div class="wt-sub"></div></div><div class="wt-foot"></div></div>`;
+    }
+    if (group !== "gen") return;
+    const ov = el.querySelector(".cw-generating");
+    if (mode === "today") {
+      // Today: server queue looks like generation; the ring counts from the click.
+      const todayPh = ph === "local" ? "queued" : ph === "server" ? "generating" : ph;
+      ov.dataset.phase = todayPh === "queued" ? "queued" : todayPh;
+      el.querySelector(".cap").textContent = L().today[todayPh];
+      let prog = todayPh === "queued" ? null : estimatedProgress(t, X);
+      if (ph === "finishing") prog = Math.max(prog, 0.98);
+      const svg = el.querySelector("svg"); svg.style.display = prog === null ? "none" : "";
+      if (prog !== null) setRing(el, prog, false);
+      return;
+    }
+    // Option 1
+    const queued = ph === "local" || ph === "server";
+    ov.dataset.phase = queued ? "queued" : ph === "finishing" ? "finishing" : "generating";
+    const chipEl = el.querySelector(".chip"), big = el.querySelector(".wt-big"), sub = el.querySelector(".wt-sub"), foot = el.querySelector(".wt-foot");
+    const rem = remaining(P, X, i, t);
+    const elapsed = t - j.genStart;
+    const overdue = ph === "generating" && elapsed > X;
+    let chip = "", bigText = "", bigIsText = false, subText = "", footText = "", warn = false;
+    const basis = sc.samples > 0 ? fill(L().basis, { x: minutes(X), n: sc.samples }) : fill(L().basisNone, { x: minutes(X) });
+    if (ph === "local") {
+      const ahead = P.jobs.filter((o) => o.i < i && phaseOf(o, t) !== "done").length;
+      chip = fill(L().chip.local, { pos: ahead + 1 });
+      bigText = bucket(L().startsIn, rem - X - FIN); bigIsText = true;
+      subText = plural(L().ahead, ahead);
+      footText = bucket(L().doneIn, rem);
+    } else if (ph === "server") {
+      const n = P.ext.filter((e) => t < e.end).length;
+      chip = L().chip.server;
+      bigText = plural(L().serverAhead, n); bigIsText = true;
+      subText = bucket(L().startsIn, rem - X - FIN);
+      footText = L().serverSub;
+    } else if (ph === "preparing" || ph === "submitting") {
+      chip = L().chip[ph];
+      bigText = L().startSoon; bigIsText = true;
+      subText = bucket(L().doneIn, rem);
+      footText = basis;
+    } else if (ph === "generating") {
+      chip = L().chip.generating;
+      bigText = fmt(elapsed);
+      if (overdue) { subText = L().overdue; warn = true; footText = fill(L().basisShort, { x: minutes(X) }); }
+      else { subText = bucket(L().left, rem); footText = basis; }
+    } else if (ph === "finishing") {
+      chip = L().chip.finishing;
+      bigText = fmt(j.genEnd - j.genStart);
+      subText = L().almost;
+    }
+    chipEl.textContent = chip;
+    big.textContent = bigText; big.classList.toggle("text", bigIsText);
+    if (subText !== st.sub) {
+      // Highlight estimate changes that are not just the normal countdown.
+      const jumped = st.sub && queued;
+      st.sub = subText; sub.textContent = subText;
+      if (jumped) { sub.classList.add("changed"); setTimeout(() => sub.classList.remove("changed"), 900); }
+    }
+    sub.classList.toggle("warn", warn);
+    foot.textContent = footText;
+    const svg = el.querySelector("svg");
+    if (queued || ph === "preparing" || ph === "submitting") { svg.style.display = "none"; }
+    else {
+      svg.style.display = "";
+      const prog = ph === "finishing" ? 0.98 : Math.min(elapsed / X, 0.95);
+      setRing(el, prog, overdue);
+    }
+  });
+}
+
+function renderHud() {
+  const sc = SCENARIOS[scenario], P = plan(sc), started = t > 0 || playing;
+  $("modeBadge").textContent = mode === "today" ? L().badgeToday : L().badgeOption;
+  if (mode !== "option" || sc.jobs.length < 2 || !started) { $("hud").hidden = true; return; }
+  const phases = P.jobs.map((j) => phaseOf(j, t));
+  const run = phases.filter((p) => ["preparing", "submitting", "generating", "finishing"].includes(p)).length;
+  const wait = phases.filter((p) => p === "local" || p === "server").length;
+  $("hud").hidden = false;
+  $("hudText").textContent = run + wait === 0 ? L().hudDone : wait === 0 ? fill(L().hudRun, { run }) : fill(L().hud, { run, wait });
+}
+
+let toastKey = "";
+function renderToasts() {
+  const list = t >= 0.3 && t < 4 ? [L().toastSubmitted] : [];
+  const k = lang + list.join();
+  if (k === toastKey) return; toastKey = k;
+  $("toasts").innerHTML = list.map((m) => `<div class="toast">${m}</div>`).join("");
+}
+
+function renderTimeline() {
+  const sc = SCENARIOS[scenario], P = plan(sc), tl = L().tl, rows = [];
+  P.jobs.forEach((j, i) => {
+    const name = sc.jobs.length > 1 ? `${L().nodeNames[i]} · ` : "";
+    if (j.lockAt > 0) rows.push([0, name + tl.lockQ]);
+    rows.push([j.lockAt, name + tl.prep]);
+    if (j.genStart > j.accepted) rows.push([j.accepted, name + tl.serverQ]);
+    rows.push([j.genStart, name + tl.gen]);
+    rows.push([j.doneAt, name + tl.done]);
+  });
+  rows.sort((a, b) => a[0] - b[0]);
+  let nowIdx = -1; rows.forEach(([at], i) => { if (t >= at && (t > 0 || playing)) nowIdx = i; });
+  $("timeline").innerHTML = rows.map(([at, txt], i) => `<div class="${i === nowIdx ? "now" : i < nowIdx ? "past" : ""}"><span>${fmt(at)}</span><span>${txt}</span></div>`).join("");
+}
+
+function renderControls() {
+  const P = plan(SCENARIOS[scenario]);
+  $("clock").textContent = fmt(t);
+  $("scrub").value = Math.round((t / (P.end + 8)) * 1000);
+  $("scDesc").textContent = L().scDesc[scenario];
+}
+
+function renderAll() { renderNodes(); renderHud(); renderToasts(); renderTimeline(); renderControls(); }
+
+function renderStatic() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => { const v = L()[el.dataset.i18n]; if (typeof v === "string") el.innerHTML = v; });
+  document.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  $("scenarioSeg").innerHTML = SC_ORDER.map((s) => `<button type="button" data-s="${s}" aria-pressed="${s === scenario}">${L().sc[s]}</button>`).join("");
+  setPressed($("modeSeg"), "m", mode); setPressed($("speedSeg"), "x", speed);
+  $("changes").innerHTML = L().changes.map((c) => `<li>${c}</li>`).join("");
+  $("rules").innerHTML = L().rules.map((c) => `<li>${c}</li>`).join("");
+  $("srcTable").innerHTML = `<thead><tr>${L().srcHead.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${
+    L().src.map(([a, b, c, d]) => `<tr><td><b>${a}</b></td><td>${b}</td><td>${c}</td><td><span class="tag ${d}">${d === "ok" ? L().tagOk : L().tagMid}</span></td></tr>`).join("")}</tbody>`;
+  $("openList").innerHTML = L().open.map((c) => `<li>${c}</li>`).join("");
+  $("playBtn").textContent = playing ? L().pause : L().play;
+  buildNodes(); toastKey = "";
+  renderAll();
+}
+function setPressed(seg, attr, value) { seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === String(value)))); }
+
+function tick(now) {
+  if (!playing) return;
+  const dt = Math.max(0, (now - last) / 1000); last = now;
+  const end = plan(SCENARIOS[scenario]).end + 8;
+  t = Math.min(end, t + dt * speed);
+  if (t >= end) { playing = false; $("playBtn").textContent = L().play; }
+  renderAll();
+  if (playing) requestAnimationFrame(tick);
+}
+function stop() { playing = false; $("playBtn").textContent = L().play; }
+
+document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("click", () => {
+  lang = b.dataset.lang; try { localStorage.setItem("gw1-lang", lang); } catch {} renderStatic();
+}));
+$("scenarioSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  scenario = b.dataset.s; setPressed($("scenarioSeg"), "s", scenario); t = 0; stop(); buildNodes(); renderAll();
+});
+$("modeSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  mode = b.dataset.m; setPressed($("modeSeg"), "m", mode); renderAll();
+});
+$("speedSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; speed = Number(b.dataset.x); setPressed($("speedSeg"), "x", speed); });
+$("playBtn").addEventListener("click", () => {
+  if (t >= plan(SCENARIOS[scenario]).end + 8) t = 0;
+  playing = !playing; $("playBtn").textContent = playing ? L().pause : L().play;
+  if (playing) { last = performance.now(); requestAnimationFrame(tick); }
+  renderAll();
+});
+$("resetBtn").addEventListener("click", () => { t = 0; stop(); buildNodes(); renderAll(); });
+$("scrub").addEventListener("input", (e) => { t = (Number(e.target.value) / 1000) * (plan(SCENARIOS[scenario]).end + 8); renderAll(); });
+new ResizeObserver(() => renderNodes()).observe($("nodes"));
+
+// URL state for screenshots and links: ?lang=zh-CN&sc=local3&m=optionB&t=200&sel=1&shot=1
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("lang") && I18N[q.get("lang")]) lang = q.get("lang");
+  if (q.get("sc") && SCENARIOS[q.get("sc")]) scenario = q.get("sc");
+  if (q.get("m") && document.querySelector(`[data-m="${q.get("m")}"]`)) mode = q.get("m");
+  if (q.get("sel") && typeof selected !== "undefined") selected = Number(q.get("sel")) || 0;
+  if (q.get("t")) t = Math.max(0, Number(q.get("t")) || 0);
+  if (q.get("shot") === "1") document.body.classList.add("shot");
+})();
+
+renderStatic();
+</script>
+</body>
+</html>

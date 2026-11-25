@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wait Option 1 + B</title>
+<style>
+:root {
+  --bg: #f6f6f8; --panel: #ffffff; --ink: #1d1f27; --muted: #626775; --line: #e2e3e8;
+  --accent: #3d7be0; --warn: #b4561e; --chip: #eef0f5; --note: #fff6e0; --note-ink: #6b4a10;
+  --canvas: #15171e; --canvas-dot: #262a35;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101116; --panel: #191b22; --ink: #e8e9ee; --muted: #9a9fad; --line: #2b2e38;
+    --accent: #6aa2ff; --warn: #e59a6a; --chip: #23262f; --note: #2f2817; --note-ink: #f0d39a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101116; --panel: #191b22; --ink: #e8e9ee; --muted: #9a9fad; --line: #2b2e38;
+  --accent: #6aa2ff; --warn: #e59a6a; --chip: #23262f; --note: #2f2817; --note-ink: #f0d39a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif; }
+header { max-width: 1280px; margin: 0 auto; padding: 24px 16px 8px; display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+header p { margin: 0; color: var(--muted); max-width: 780px; }
+.lang { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.lang button { border: 0; background: var(--panel); color: var(--muted); padding: 6px 12px; cursor: pointer; font: inherit; }
+.lang button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+main { max-width: 1280px; margin: 0 auto; padding: 8px 16px 40px; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0 0 12px; }
+.full { grid-column: 1 / -1; }
+.small { font-size: 12px; color: var(--muted); }
+.draftnote { background: var(--note); color: var(--note-ink); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 0 0 12px; }
+
+/* ---------- Simulated canvas ---------- */
+.app { border-radius: 12px; overflow: hidden; border: 1px solid #2a2e3a; background: var(--canvas); }
+.stage { position: relative; background-color: var(--canvas);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 18px 18px;
+  padding: 48px 16px 64px; }
+.hud { position: absolute; top: 12px; right: 12px; background: #1f222cdd; border: 1px solid #343846; color: #d6d9e2; font-size: 12px; border-radius: 8px; padding: 4px 10px; display: flex; gap: 8px; align-items: center; }
+.hud[hidden] { display: none; }
+.hud .dot { width: 6px; height: 6px; border-radius: 50%; background: #5aa8ff; box-shadow: 0 0 6px #5aa8ff; }
+.modebadge { position: absolute; top: 12px; left: 12px; font-size: 11px; color: #a8adbb; background: #0d0f14aa; border-radius: 6px; padding: 3px 8px; }
+.nodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; align-items: start; max-width: 860px; margin: 0 auto; }
+.nodes.single { grid-template-columns: minmax(0, 400px); justify-content: center; }
+.node-wrap { cursor: pointer; }
+.node-title { color: #a8adbb; font-size: 12px; margin: 0 0 6px 2px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.node-title b { color: #e3e5ec; font-weight: 600; }
+.node-title .took { color: #8fd3a8; }
+.node { position: relative; aspect-ratio: 16 / 9; border-radius: 11px; background: #1f222c; border: 1px solid #343846; overflow: hidden; }
+.node-wrap.selected .node { box-shadow: 0 0 0 2px #8b93ff; border-color: #8b93ff; }
+.node-media { position: absolute; inset: 0; background: linear-gradient(160deg, #2c3c5e 0%, #6a4f7a 45%, #d08a6a 80%, #f1c27d 100%); }
+.node-media.v2 { background: linear-gradient(170deg, #12324a 0%, #1f6d78 50%, #9fd0c0 100%); }
+.node-media.v3 { background: linear-gradient(160deg, #3b2142 0%, #8a3d5c 55%, #e7a46c 100%); }
+.node-media .sun { position: absolute; width: 22%; aspect-ratio: 1; border-radius: 50%; left: 62%; top: 34%; background: #ffe2a6; box-shadow: 0 0 40px #ffcf80; }
+.node-media .hill { position: absolute; left: -10%; right: -10%; bottom: -30%; height: 60%; border-radius: 50%; background: #1d2433; }
+.node-media::after { content: "▶"; position: absolute; right: 10px; bottom: 8px; color: #fff; font-size: 12px; opacity: .8; }
+.arrive { animation: cw-generation-reveal 800ms cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+/* Overlay visuals copied from src/canvas/generating.css on main (63279266) */
+.cw-generating { position: absolute; inset: 0; z-index: 3; overflow: hidden; isolation: isolate; border-radius: 11px; background: #1c202b; pointer-events: none; animation: cw-generation-enter 240ms ease-out both; }
+.cw-generating-field { position: absolute; inset: -25%; filter: blur(26px); opacity: 0.8; }
+.cw-generating-field i { position: absolute; width: 64%; height: 70%; border-radius: 50%; animation: cw-generation-drift 6s ease-in-out infinite alternate; }
+.cw-generating-field i:nth-child(1) { left: -5%; top: 0; background: radial-gradient(ellipse, #708abe 0%, #708abe00 70%); }
+.cw-generating-field i:nth-child(2) { left: 45%; top: 15%; background: radial-gradient(ellipse, #ac8aba 0%, #ac8aba00 70%); animation-delay: -3s; animation-duration: 7s; animation-direction: alternate-reverse; }
+.cw-generating-field i:nth-child(3) { left: 0; top: 50%; background: radial-gradient(ellipse, #71a7a1 0%, #71a7a100 70%); animation-delay: -2s; animation-duration: 5s; }
+.cw-generating-field i:nth-child(4) { left: 45%; top: 55%; background: radial-gradient(ellipse, #c1a896 0%, #c1a89600 70%); animation-delay: -4s; animation-duration: 8s; animation-direction: alternate-reverse; }
+.cw-generating-stars { position: absolute; inset: 0; opacity: 0.42; background-image: radial-gradient(circle at 22% 28%, #e9f1ff 0 1px, transparent 1.8px), radial-gradient(circle at 67% 36%, #f4ebff 0 1px, transparent 1.8px), radial-gradient(circle at 42% 66%, #d9f8ef 0 0.7px, transparent 1.6px), radial-gradient(circle at 80% 72%, #e9f1ff 0 0.7px, transparent 1.6px); animation: cw-generation-stars 3.6s ease-in-out infinite alternate; }
+.cw-generating-sheen { position: absolute; inset: -30%; background: linear-gradient(110deg, transparent 35%, #e9f2ff20 49%, #e9f2ff08 54%, transparent 65%); animation: cw-generation-sweep 3.2s ease-in-out infinite; }
+.cw-generating-caption { position: absolute; bottom: 14px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; color: #f0f0f6; font-size: 11px; line-height: 1.5; text-shadow: 0 1px 6px #000b; }
+.cw-generating-indicator { width: 5px; height: 5px; border-radius: 50%; background: #e2def9; box-shadow: 0 0 9px #dfd7ff9c; animation: cw-generation-stars 1.6s ease-in-out infinite alternate; flex: none; }
+.cw-generating[data-phase="queued"] .cw-generating-field { opacity: 0.3; }
+.cw-generating[data-phase="queued"] .cw-generating-field i { animation-duration: 12s; }
+.cw-generating[data-phase="queued"] .cw-generating-sheen { display: none; }
+.cw-generating[data-phase="finishing"] .cw-generating-sheen { animation-duration: 1.8s; }
+.cw-generating-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.cw-generating-ring path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.cw-generating-ring-track { stroke: #ffffff14; stroke-width: 2; }
+.cw-generating-ring-progress { stroke: #5aa8ff; stroke-width: 2; filter: drop-shadow(0 0 3px #3d8bffaa); transition: stroke-dashoffset 250ms linear; }
+@keyframes cw-generation-drift { from { transform: translate(-12%, -8%) scale(0.85); } to { transform: translate(15%, 12%) scale(1.2); } }
+@keyframes cw-generation-sweep { from { transform: translateX(-65%); } to { transform: translateX(65%); } }
+@keyframes cw-generation-stars { from { opacity: 0.2; } to { opacity: 0.7; } }
+@keyframes cw-generation-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cw-generation-reveal { from { opacity: 0.25; filter: blur(8px); } to { opacity: 1; filter: blur(0); } }
+
+/* Option 1: wait facts on the node */
+.wt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 26px 12px 22px; color: #f0f0f6; text-shadow: 0 1px 6px #000b; text-align: center; }
+.wt-chip { position: absolute; top: 9px; left: 10px; display: inline-flex; gap: 6px; align-items: center; font-size: 11px; background: #0d0f1488; border-radius: 999px; padding: 2px 9px 2px 7px; color: #e3e5ec; max-width: calc(100% - 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wt-big { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.wt-big.text { font-size: 16px; }
+.wt-sub { font-size: 12px; color: #dfe3ee; border-radius: 6px; padding: 0 6px; transition: background-color .6s; }
+.wt-sub.warn { color: #ffd2a6; }
+.wt-sub.changed { background: #ffd27a40; }
+.wt-foot { position: absolute; bottom: 8px; left: 10px; right: 10px; font-size: 10.5px; color: #b9bfcc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.cw-generating-ring.overdue .cw-generating-ring-progress { animation: ring-breathe 1.6s ease-in-out infinite alternate; }
+@keyframes ring-breathe { from { opacity: .35; } to { opacity: 1; } }
+
+/* ---------- Composer area: today's composer, or the B wait card ---------- */
+.composer-area { max-width: 560px; margin: 18px auto 0; }
+.sel-label { color: #8b93ff; font-size: 11.5px; margin: 0 0 6px 4px; }
+.composer { background: #1d2029; border: 1px solid #343846; border-radius: 12px; padding: 10px 12px; color: #d8dbe4; }
+.composer.running { border-color: #78728e; }
+.composer .prompt { font-size: 12.5px; color: #c9ccd6; min-height: 38px; }
+.composer.running .prompt, .composer.running .chips span, .composer.running .refs { opacity: .45; }
+.crow { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.chips { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+.chips span { font-size: 11px; background: #2a2e3a; border-radius: 6px; padding: 2px 8px; color: #b8bcc8; }
+.refs { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.thumb { width: 44px; height: 30px; border-radius: 6px; border: 1px solid #3c4152; position: relative; overflow: hidden; flex: none; }
+.thumb.t1 { background: linear-gradient(160deg, #2c3c5e, #d08a6a); }
+.thumb.t2 { background: linear-gradient(170deg, #12324a, #9fd0c0); }
+.thumb.t3 { background: linear-gradient(120deg, #4a3b2a, #c9a46a); }
+.thumb.t4 { background: linear-gradient(160deg, #3b2142, #e7a46c); }
+.thumb.audio { background: #262a36; display: grid; place-items: center; color: #9fb4ff; font-size: 13px; }
+.thumb.video::after { content: "▶"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 10px; }
+.run { width: 32px; height: 32px; border-radius: 50%; border: 0; display: grid; place-items: center; background: #e8e9ee; color: #15171e; flex: none; }
+.run.cancel { background: #3a3e4b; color: #f0f0f6; }
+.run.cancel::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
+.run:not(.cancel)::before { content: "↑"; font-weight: 700; }
+
+.wcard { background: #1b1e27; border: 1px solid #4a4566; border-radius: 12px; color: #dfe2ea; overflow: hidden; animation: cw-generation-enter 240ms ease-out both; }
+.wc-head { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #2b2f3b; flex-wrap: wrap; }
+.wc-title { font-weight: 600; font-size: 13px; color: #f0f1f6; display: inline-flex; gap: 6px; align-items: center; }
+.wc-tag { font-size: 11px; background: #2a2e3a; border-radius: 6px; padding: 1px 7px; color: #b8bcc8; white-space: nowrap; }
+.wc-spacer { flex: 1; }
+.wc-btn { background: transparent; border: 1px solid #3c4152; color: #c9cdd8; border-radius: 6px; font: inherit; font-size: 11.5px; padding: 2px 8px; cursor: pointer; }
+.wc-btn.stop { border-color: #5a4a4a; color: #f0c8c8; }
+.wc-body { display: grid; gap: 12px; padding: 12px; }
+.wc-body[hidden] { display: none; }
+.wc-label { font-size: 11px; color: #8f95a6; margin-bottom: 4px; letter-spacing: .02em; }
+.wc-prompt { font-size: 12.5px; color: #d6d9e3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wc-refs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.wc-ref { display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: #b9bfcc; }
+.wc-ref b { color: #e3e5ec; font-weight: 500; }
+.wc-params { display: flex; gap: 6px; flex-wrap: wrap; }
+.wc-params span { font-size: 11.5px; background: #262a36; border-radius: 6px; padding: 2px 8px; color: #d0d4de; font-variant-numeric: tabular-nums; }
+.wc-hint { font-size: 11.5px; color: #9aa0b0; margin-top: 6px; }
+.wc-tips { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.wc-tips li { font-size: 12.5px; color: #e0e3ec; padding-left: 18px; position: relative; }
+.wc-tips li::before { content: "✦"; position: absolute; left: 0; color: #b6a8ff; font-size: 11px; top: 1px; }
+.wc-tips li.hot::before { color: #ffc98a; }
+.wc-know { font-size: 12px; color: #c4c9d6; background: #22253080; border-radius: 8px; padding: 8px 10px; }
+.wc-foot { font-size: 11px; color: #8f95a6; padding: 8px 12px; border-top: 1px solid #2b2f3b; }
+.wc-collapsed-line { font-size: 12px; color: #c9cdd8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 140px; min-width: 0; }
+
+.toasts { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; width: calc(100% - 32px); pointer-events: none; }
+.toast { background: #2b2f3b; color: #eef0f5; font-size: 12px; padding: 8px 12px; border-radius: 8px; box-shadow: 0 6px 20px #0008; max-width: 100%; animation: cw-generation-enter 200ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-generating, .cw-generating-field i, .cw-generating-stars, .cw-generating-sheen, .cw-generating-indicator, .arrive, .wcard, .cw-generating-ring.overdue .cw-generating-ring-progress { animation: none; }
+  .cw-generating-sheen { display: none; }
+  .cw-generating-ring-progress, .wt-sub { transition: none; }
+}
+
+/* ---------- Controls ---------- */
+.controls { display: grid; gap: 12px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
+.seg button { border: 0; border-right: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 6px 10px; cursor: pointer; font: inherit; font-size: 13px; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.btn { border: 1px solid var(--line); background: var(--chip); color: var(--ink); padding: 6px 12px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+label.lbl { font-size: 12px; color: var(--muted); min-width: 56px; }
+input[type=range] { flex: 1; min-width: 140px; accent-color: var(--accent); }
+.clock { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
+.desc { background: var(--chip); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.timeline { display: grid; gap: 3px; font-size: 12.5px; }
+.timeline div { display: grid; grid-template-columns: 52px 1fr; gap: 8px; color: var(--muted); }
+.timeline div.past { color: var(--ink); }
+.timeline div.now { color: var(--accent); font-weight: 600; }
+
+ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td code, li code { font-size: 12px; background: var(--chip); padding: 0 4px; border-radius: 4px; }
+.tag { display: inline-block; font-size: 11px; border-radius: 4px; padding: 0 6px; white-space: nowrap; }
+.tag.ok { background: #d9f2e3; color: #1f6b43; }
+.tag.mid { background: #fdebd3; color: #8a4b12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag.ok { background: #1d3a2a; color: #8fd3a8; } :root:not([data-theme="light"]) .tag.mid { background: #3d2c17; color: #f0b877; } }
+:root[data-theme="dark"] .tag.ok { background: #1d3a2a; color: #8fd3a8; }
+:root[data-theme="dark"] .tag.mid { background: #3d2c17; color: #f0b877; }
+.tablewrap { overflow-x: auto; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* Screenshot mode: ?shot=1 shows only the simulated canvas */
+body.shot { background: #ff00ff; }
+body.shot header, body.shot main > section:not(:first-child), body.shot main > section:first-child > h2, body.shot main > section:first-child > .small { display: none; }
+body.shot main { display: block; padding: 0; max-width: none; margin: 0; }
+body.shot main > section:first-child { border: 0; padding: 0; background: none; border-radius: 0; }
+body.shot .app { border-radius: 0; border: 0; }
+body.shot .stage { min-height: 0; padding-bottom: 28px; }
+body.shot .tabnote, body.shot #nodeModel { display: none; }
+.proto-banner { max-width: 1280px; margin: 12px auto 0; padding: 6px 16px; font-size: 12px; color: var(--muted); }
+.proto-banner a { color: var(--accent); }
+body.shot .proto-banner { display: none; }
+</style>
+</head>
+<body>
+<div class="proto-banner">个人原型，用于 <a href="https://github.com/ThinkFlowLab/OpenDirector/issues/454">#454</a> 讨论，非正式功能 · Personal prototype for discussing <a href="https://github.com/ThinkFlowLab/OpenDirector/issues/454">#454</a>, not a shipped feature</div>
+<header>
+  <div>
+    <h1 data-i18n="title"></h1>
+    <p data-i18n="subtitle"></p>
+  </div>
+  <div class="lang" role="group" aria-label="Language">
+    <button type="button" data-lang="zh-CN">中文</button>
+    <button type="button" data-lang="en-US">English</button>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2 data-i18n="simTitle"></h2>
+    <div class="app">
+      <div class="stage">
+        <span class="modebadge" id="modeBadge"></span>
+        <div class="hud" id="hud" hidden><span class="dot"></span><span id="hudText"></span></div>
+        <div class="nodes" id="nodes"></div>
+        <div class="composer-area" id="composerArea"></div>
+        <div class="toasts" id="toasts"></div>
+      </div>
+    </div>
+    <p class="small" data-i18n="simNote" style="margin:10px 0 0"></p>
+  </section>
+
+  <section class="card controls">
+    <h2 data-i18n="ctrlTitle" style="margin:0"></h2>
+    <div class="row"><label class="lbl" data-i18n="view"></label>
+      <div class="seg" id="modeSeg">
+        <button type="button" data-m="today" data-i18n="mToday"></button>
+        <button type="button" data-m="option" data-i18n="mOption"></button>
+        <button type="button" data-m="optionB" data-i18n="mOptionB"></button>
+      </div>
+    </div>
+    <div class="row"><label class="lbl" data-i18n="scenario"></label>
+      <div class="seg" id="scenarioSeg"></div>
+    </div>
+    <div class="desc" id="scDesc"></div>
+    <div class="row"><label class="lbl" data-i18n="speed"></label>
+      <div class="seg" id="speedSeg">
+        <button type="button" data-x="1">1×</button>
+        <button type="button" data-x="10">10×</button>
+        <button type="button" data-x="30">30×</button>
+      </div>
+      <button class="btn primary" id="playBtn" type="button"></button>
+      <button class="btn" id="resetBtn" type="button" data-i18n="reset"></button>
+    </div>
+    <div class="row"><label class="lbl" data-i18n="scrub"></label><input type="range" id="scrub" min="0" max="1000" value="0" aria-label="scrub"><span class="clock" id="clock">0:00</span></div>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+  <section class="card full">
+    <h2 data-i18n="layerTitle"></h2>
+    <div class="grid2">
+      <div><h3 class="small" data-i18n="layerNodeH" style="margin:0 0 8px"></h3><ul class="plain" id="layerNode"></ul></div>
+      <div><h3 class="small" data-i18n="layerCardH" style="margin:0 0 8px"></h3><ul class="plain" id="layerCard"></ul></div>
+    </div>
+  </section>
+
+  <section class="card full">
+    <h2 data-i18n="cardTitle"></h2>
+    <p class="draftnote" data-i18n="draftNote"></p>
+    <div class="tablewrap"><table id="cardTable"></table></div>
+    <h3 class="small" data-i18n="tipRulesH" style="margin:16px 0 8px"></h3>
+    <ul class="plain" id="tipRules"></ul>
+  </section>
+
+  <section class="card full">
+    <h2 data-i18n="srcTitle"></h2>
+    <div class="tablewrap"><table id="srcTable"></table></div>
+  </section>
+
+  <section class="card full">
+    <h2 data-i18n="openTitle"></h2>
+    <ul class="plain" id="openList"></ul>
+  </section>
+</main>
+
+<script>
+const FIN = 5, PREP = 2, SUBMIT = 3, FPS = 24;
+const RES = { "480P": "832×480", "768P": "1344×768" };
+
+// The three video nodes. Inputs follow MiniMax-H3 on vLLM-Omni: modes first_frame / reference / continuation,
+// 4–15 s at 24 fps, 480P or 768P, picture and sound generated together.
+const NODES = [
+  { mode: "first_frame", dur: 5, res: "768P", media: "", refs: [{ kind: "img", cls: "t1", role: "firstFrame", name: "shore-sketch.png" }] },
+  { mode: "reference", dur: 4, res: "480P", media: " v2", refs: [
+      { kind: "img", cls: "t2", role: "scene", name: "reef.jpg" }, { kind: "img", cls: "t3", role: "style", name: "film-grain.jpg" },
+      { kind: "audio", role: "sound", name: "waves.wav" }] },
+  { mode: "continuation", dur: 6, res: "768P", media: " v3", refs: [{ kind: "video", cls: "t1", role: "continueFrom", nameKey: 0 }] }
+];
+
+const SCENARIOS = {
+  single: { expected: 180, samples: 6, ext: [], jobs: [{ actual: 172 }] },
+  local3: { expected: 180, samples: 6, ext: [], jobs: [{ actual: 150 }, { actual: 205 }, { actual: 170 }] },
+  server: { expected: 180, samples: 6, ext: [{ actual: 190, ago: 70 }, { actual: 160, ago: 0 }], jobs: [{ actual: 175 }] },
+  slow:   { expected: 180, samples: 6, ext: [], jobs: [{ actual: 290 }] },
+  first:  { expected: 180, samples: 0, ext: [], jobs: [{ actual: 135 }] }
+};
+const SC_ORDER = ["single", "local3", "server", "slow", "first"];
+
+const I18N = {
+  "zh-CN": {
+    title: "方案一 + B：节点说清时间，卡片讲清这次生成",
+    subtitle: "在方案一的基础上，把生成期间被锁住的输入框换成一张“本次生成”卡片：这次在做什么、参数是什么意思、和当前设置相关的提示。节点放事实，卡片放解释；只有选中节点时才出现卡片。",
+    simTitle: "模拟画布",
+    simNote: "点击节点可切换选中；卡片出现在节点下方原来输入框的位置。节点动态背景沿用现有样式，视频结果为示意画面。",
+    ctrlTitle: "回放控制",
+    view: "视图", mToday: "现状", mOption: "方案一", mOptionB: "方案一 + B",
+    scenario: "场景",
+    sc: { single: "单个视频", local3: "本机 3 个排队", server: "模型服务被占用", slow: "比预计慢", first: "首次使用" },
+    scDesc: {
+      single: "最常见的情况：首帧模式，768P、5 秒，没有排队。选中节点看卡片。",
+      local3: "3 个视频分别用了首帧、参考、接续三种模式。点击不同节点，卡片内容跟着换。",
+      server: "模型服务上已有 2 个其他客户端的任务。排队时卡片同样可用，帮用户趁等待检查这次的设置。",
+      slow: "这次比平时慢。卡片会多出一条和“慢”相关的提示：试镜头可以先用 480P。",
+      first: "本机第一次用这个设置。卡片里的模型知识换成面向新用户的一句说明。"
+    },
+    speed: "速度", play: "▶ 播放", pause: "❚❚ 暂停", reset: "重置", scrub: "时间",
+    badge: { today: "现状", option: "方案一", optionB: "方案一 + B" },
+    nodeNames: ["日落海边", "海浪特写", "黄昏人像"],
+    prompts: [
+      "黄昏的海边，镜头缓慢推进，海浪一层层拍打前景的黑色礁石，溅起细碎的浪花，水面映着金色的光。海浪声和远处的海鸥声。",
+      "海浪拍上礁石的特写，慢动作，水花在逆光里散开，胶片颗粒质感。声音参考海浪录音。",
+      "接上一段，镜头继续推进，一位穿浅色长裙的女子走进画面，停在礁石边望向远方，风吹起她的头发。"
+    ],
+    took: "用时 {t}",
+    hud: "视频：{run} 个生成中 · {wait} 个排队", hudRun: "视频：{run} 个生成中", hudDone: "视频：全部完成",
+    toastSubmitted: "生成任务已提交，结果将保存到当前工程。",
+    today: { queued: "排队中", preparing: "正在准备参考", submitting: "正在提交到模型服务", generating: "模型服务生成中", finishing: "正在读取并保存结果" },
+    chip: { local: "本机排队 · 第 {pos} 位", preparing: "准备参考", submitting: "提交中", server: "模型服务排队", generating: "生成中", finishing: "保存结果" },
+    ahead: { one: "前面还有 1 个视频", n: "前面还有 {n} 个视频" },
+    serverAhead: { one: "前面 1 个任务", n: "前面 {n} 个任务" },
+    serverSub: "同一模型服务上的其他请求",
+    startSoon: "即将开始",
+    startsIn: { lt: "1 分钟内开始", n: "约 {n} 分钟后开始" },
+    left: { lt: "预计 1 分钟内完成", n: "预计还需约 {n} 分钟" },
+    doneIn: { lt: "预计 1 分钟内完成", n: "预计约 {n} 分钟后完成" },
+    overdue: "比平时久，仍在生成",
+    almost: "马上就好",
+    basis: "通常约 {x} · 本机最近 {n} 次同设置",
+    basisNone: "暂无本机记录 · 按默认 {x} 粗估",
+    basisShort: "通常约 {x}",
+    tl: { lockQ: "本机排队", prep: "准备/提交", serverQ: "服务端排队", gen: "生成", done: "完成" },
+    selected: "▲ 已选中：{name}",
+    // Composer and card
+    chipModel: "MiniMax-H3 · 本地",
+    modeName: { first_frame: "首帧模式", reference: "参考模式", continuation: "接续模式" },
+    roleName: { firstFrame: "首帧", scene: "场景", style: "风格", sound: "声音", continueFrom: "接续自" },
+    cardTitle0: "本次生成",
+    collapse: "收起", expand: "展开", cancel: "取消生成",
+    secWhat: "这次在做什么", secParams: "参数", secTips: "小提示", secKnow: "关于这个模型",
+    pFrames: "{d} 秒 × {fps} 帧 = {f} 帧",
+    pRes: "{res} · {px}",
+    pAV: "画面 + 声音",
+    paramHint: "分辨率和时长越大，生成越久。768P 的像素约是 480P 的 2.6 倍。",
+    collapsedLine: "{mode} · {d} 秒 · {res} · {tip}",
+    footer: "生成结束后，这里会恢复为输入框，提示词和参数保持不变，可以直接修改再生成。",
+    tips: {
+      slow768: "这次比平时慢。试镜头阶段可以先用 480P，确定效果后再出 768P。",
+      continuation: "接续依赖模型服务里上一段的缓存。服务重启后，需要先重新生成上一段再接续。",
+      refAudio: "加了声音参考：生成的声音会以它为依据，提示词里不必再重复描述同样的声音。",
+      reference: "参考图较多时，在提示词里用 @ 写明每张图的用途（人物、场景、风格），更容易对上。",
+      firstFrame: "首帧图已经定下构图和人物位置，提示词重点写动作和镜头运动会更有效。",
+      sound: "H3 会同时生成画面和声音，提示词里描述的声音（海浪声、对白）也会被生成。"
+    },
+    know: {
+      frames: "H3 以每秒 24 帧生成，这次 {d} 秒共 {f} 帧；接续生成的长度会对齐到 17 帧一组。",
+      first: "MiniMax-H3 在本机 GPU 上运行，一段视频通常需要几分钟。之后的预计时间会按你的实际用时调整。"
+    },
+    // Explanations
+    layerTitle: "两层分工",
+    layerNodeH: "节点上（方案一，始终可见）",
+    layerNode: [
+      "只放事实：排第几、做了多久、大约还要多久。",
+      "扫一眼画布就能看到，不需要选中。",
+      "保持简短，不放解释和提示，避免小节点变挤。"
+    ],
+    layerCardH: "节点下方（B，选中时出现）",
+    layerCard: [
+      "替换生成期间被锁住的输入框，不新增浮层或页面。",
+      "讲清这次生成：提示词摘要、参考素材及用途、参数含义、和当前设置相关的提示。",
+      "可以收起成一行；生成结束后恢复成可编辑的输入框，内容原样保留。",
+      "保留“取消生成”。现状下取消是输入框里的停止按钮，这里改成文字按钮更明确。"
+    ],
+    cardTitle: "卡片内容从哪里来",
+    draftNote: "卡片里的提示和模型知识是草稿，用来讨论形式；正式文案需要和模型组核对，并提供中英双语。",
+    cardHead: ["区块", "内容", "来源", "难度"],
+    cardRows: [
+      ["这次在做什么", "提示词摘要（两行，可展开）、参考素材缩略图及用途（首帧、场景、风格、声音、接续自）。", "任务的输入快照（<code>Job.inputSnapshot</code>），提交时已固定，不受之后编辑影响。", "ok"],
+      ["参数", "时长 × 帧率 = 帧数、分辨率与像素、画面 + 声音。", "任务的执行参数（<code>Job.execution</code>）和模型能力表（H3：4–15 秒、24 帧/秒、480P/768P）。", "ok"],
+      ["小提示", "最多 2 条，按这次的模式、参数和状态挑选；没有相关的就不显示。", "前端提示目录（中英双语消息表）+ 选择规则。", "mid"],
+      ["关于这个模型", "一句与当前模型、模式相关的知识；首次使用时换成面向新用户的说明。", "按模型配置区分的知识条目（双语）。", "mid"]
+    ],
+    tipRulesH: "提示怎么选（原型里的规则）",
+    tipRules: [
+      "按优先级挑最多 2 条：比预计慢且用 768P → 接续模式 → 有声音参考 → 参考模式 → 首帧模式 → 声音描述。",
+      "“比预计慢”这条只有在超过预计时间后才出现，并用橙色标记。",
+      "模型知识：首次使用这个设置时显示新手说明，否则显示帧数相关的知识。",
+      "不凑数：没有匹配的提示时，整块不显示。"
+    ],
+    srcTitle: "方案一的数据来源（不变）",
+    srcHead: ["显示的信息", "数据来源", "需要做的改动", "难度"],
+    src: [
+      ["本机排队位置", "OpenDirector 后端按模型服务地址串行执行本地视频（<code>remote_limits</code>）。", "任务查询结果返回排队位置。", "ok"],
+      ["服务端排队", "vLLM-Omni 状态 <code>queued</code> / <code>in_progress</code>；<code>GET /v1/videos</code> 列出全部任务。", "适配器保留两种状态，并估算位置。", "mid"],
+      ["已生成时长", "任务变为 <code>in_progress</code> 时记录开始时间。", "Job 增加开始生成时间。", "ok"],
+      ["预计时长", "vLLM-Omni 完成时返回 <code>inference_time_s</code>。", "后端按 模型 + 时长 + 分辨率 学习。", "mid"]
+    ],
+    tagOk: "小", tagMid: "中",
+    openTitle: "需要讨论",
+    open: [
+      "卡片默认展开，还是默认收起成一行、点开再看？",
+      "提示和模型知识由谁来写、谁来核对？模型更新后怎么同步？",
+      "同一条提示看过几次之后，是否不再显示？记录放在哪里（属于界面偏好，不是工程数据）？",
+      "Agent 发起的生成，卡片是否同样显示？内容是否需要标明“由 Agent 提交”？",
+      "方案一的问题仍然有效：服务端排队的估计、多卡并发、同一节点多个任务。"
+    ]
+  },
+  "en-US": {
+    title: "Option 1 + B: the node tells the time, the card explains this run",
+    subtitle: "Builds on Option 1. The composer, locked during generation, becomes a “This run” card: what's being made, what the settings mean, and tips that fit the current settings. Facts stay on the node, explanations go on the card, and the card appears only when the node is selected.",
+    simTitle: "Simulated canvas",
+    simNote: "Click a node to select it; the card appears below the nodes, where the composer normally is. The node's animated background is the existing style, and the video result is a stand-in picture.",
+    ctrlTitle: "Playback",
+    view: "View", mToday: "Today", mOption: "Option 1", mOptionB: "Option 1 + B",
+    scenario: "Scenario",
+    sc: { single: "One video", local3: "3 queued locally", server: "Model service busy", slow: "Slower than usual", first: "First run" },
+    scDesc: {
+      single: "The common case: first-frame mode, 768P, 5 s, no queue. Select the node to see the card.",
+      local3: "Three videos using first-frame, reference and continuation modes. Click each node and the card changes.",
+      server: "The model service already has 2 jobs from other clients. The card works while queued too, so users can check this run's settings while they wait.",
+      slow: "This run is slower than usual, so the card adds a tip about it: try 480P while drafting.",
+      first: "First run of these settings on this machine. The model note becomes a short explanation for new users."
+    },
+    speed: "Speed", play: "▶ Play", pause: "❚❚ Pause", reset: "Reset", scrub: "Time",
+    badge: { today: "Today", option: "Option 1", optionB: "Option 1 + B" },
+    nodeNames: ["Sunset shore", "Wave close-up", "Portrait at dusk"],
+    prompts: [
+      "A seashore at dusk, slow push-in, waves breaking over dark rocks in the foreground, fine spray, golden light on the water. Sound of waves and distant gulls.",
+      "Close-up of a wave hitting the rocks, slow motion, spray scattering in backlight, film grain. Sound follows the wave recording.",
+      "Continuing the last clip, the camera keeps pushing in as a woman in a pale dress walks into frame, stops by the rocks and looks out, wind in her hair."
+    ],
+    took: "took {t}",
+    hud: "Videos: {run} generating · {wait} queued", hudRun: "Videos: {run} generating", hudDone: "Videos: all done",
+    toastSubmitted: "Generation submitted. Results will be saved to this project.",
+    today: { queued: "Queued", preparing: "Preparing references", submitting: "Submitting to the model service", generating: "Generating with the model service", finishing: "Reading and saving the result" },
+    chip: { local: "Queued here · #{pos}", preparing: "Preparing", submitting: "Submitting", server: "Model service queue", generating: "Generating", finishing: "Saving" },
+    ahead: { one: "1 video ahead", n: "{n} videos ahead" },
+    serverAhead: { one: "1 job ahead", n: "{n} jobs ahead" },
+    serverSub: "Other requests on the same model service",
+    startSoon: "Starting soon",
+    startsIn: { lt: "Starts within a minute", n: "Starts in about {n} min" },
+    left: { lt: "Under a minute left", n: "About {n} min left" },
+    doneIn: { lt: "Done within a minute", n: "Done in about {n} min" },
+    overdue: "Taking longer than usual, still working",
+    almost: "Almost done",
+    basis: "Usually about {x} · last {n} runs here",
+    basisNone: "No history yet · rough guess {x}",
+    basisShort: "Usually about {x}",
+    tl: { lockQ: "Local queue", prep: "Prepare/submit", serverQ: "Service queue", gen: "Generate", done: "Done" },
+    selected: "▲ Selected: {name}",
+    chipModel: "MiniMax-H3 · local",
+    modeName: { first_frame: "First frame", reference: "Reference", continuation: "Continuation" },
+    roleName: { firstFrame: "First frame", scene: "Scene", style: "Style", sound: "Sound", continueFrom: "Continues" },
+    cardTitle0: "This run",
+    collapse: "Collapse", expand: "Expand", cancel: "Cancel",
+    secWhat: "What's being made", secParams: "Settings", secTips: "Tips", secKnow: "About this model",
+    pFrames: "{d} s × {fps} fps = {f} frames",
+    pRes: "{res} · {px}",
+    pAV: "Picture + sound",
+    paramHint: "Higher resolution and longer clips take longer. 768P has about 2.6× the pixels of 480P.",
+    collapsedLine: "{mode} · {d} s · {res} · {tip}",
+    footer: "When generation ends, this turns back into the composer with the same prompt and settings, ready to edit and run again.",
+    tips: {
+      slow768: "This run is slower than usual. While drafting, try 480P and switch to 768P once you like the result.",
+      continuation: "Continuation relies on the model service's cache of the previous clip. After a service restart, regenerate the previous clip first.",
+      refAudio: "A sound reference is attached: the generated sound follows it, so the prompt doesn't need to describe the same sound again.",
+      reference: "With several reference images, use @ in the prompt to say what each one is for (character, scene, style).",
+      firstFrame: "The first frame already fixes composition and positions, so the prompt works best describing motion and camera movement.",
+      sound: "H3 generates picture and sound together; sounds described in the prompt (waves, dialogue) are generated too."
+    },
+    know: {
+      frames: "H3 generates at 24 fps, so this {d} s clip is {f} frames. Continuation lengths snap to groups of 17 frames.",
+      first: "MiniMax-H3 runs on this machine's GPU, and a clip usually takes a few minutes. Estimates adjust to your real run times."
+    },
+    layerTitle: "Who does what",
+    layerNodeH: "On the node (Option 1, always visible)",
+    layerNode: [
+      "Facts only: place in line, time spent, roughly how long is left.",
+      "Visible at a glance across the canvas, no selection needed.",
+      "Short. No explanations or tips, so small nodes stay readable."
+    ],
+    layerCardH: "Below the node (B, when selected)",
+    layerCard: [
+      "Replaces the composer that is locked during generation. No new overlay or page.",
+      "Explains this run: prompt summary, references and their roles, what the settings mean, tips that fit them.",
+      "Collapses to one line. When generation ends it turns back into an editable composer with everything kept.",
+      "Keeps Cancel. Today it's the stop icon in the composer; here it becomes a labelled button."
+    ],
+    cardTitle: "Where the card content comes from",
+    draftNote: "The tips and model notes on the card are drafts for discussing the format. Final copy needs checking with the model team and both languages.",
+    cardHead: ["Section", "Content", "Source", "Effort"],
+    cardRows: [
+      ["What's being made", "Prompt summary (two lines, expandable), reference thumbnails and their roles (first frame, scene, style, sound, continues).", "The job's input snapshot (<code>Job.inputSnapshot</code>), fixed at submission and unaffected by later edits.", "ok"],
+      ["Settings", "Duration × fps = frames, resolution and pixels, picture + sound.", "The job's execution parameters (<code>Job.execution</code>) and the model capability table (H3: 4–15 s, 24 fps, 480P/768P).", "ok"],
+      ["Tips", "At most 2, chosen by this run's mode, settings and state; hidden when none fit.", "A UI tip catalog (bilingual message tables) plus selection rules.", "mid"],
+      ["About this model", "One line about the current model and mode; a new-user note on first run.", "Notes keyed by model configuration (bilingual).", "mid"]
+    ],
+    tipRulesH: "How tips are chosen (prototype rules)",
+    tipRules: [
+      "Pick at most 2 by priority: slower than expected on 768P → continuation → sound reference → reference mode → first-frame mode → sound in prompt.",
+      "The “slower than usual” tip appears only after the estimate has passed, marked in orange.",
+      "Model note: the new-user note on the first run of these settings, otherwise the frame-count note.",
+      "No filler: with no matching tip, the whole section is hidden."
+    ],
+    srcTitle: "Option 1 data sources (unchanged)",
+    srcHead: ["Shown", "Source", "Change needed", "Effort"],
+    src: [
+      ["Place in the local queue", "OpenDirector's backend runs self-hosted video one at a time per service address (<code>remote_limits</code>).", "Return the queue position in job queries.", "ok"],
+      ["Service queue", "vLLM-Omni status <code>queued</code> / <code>in_progress</code>; <code>GET /v1/videos</code> lists every job.", "Keep both states in the adapter and estimate position.", "mid"],
+      ["Time spent generating", "Record the start time when the job moves to <code>in_progress</code>.", "Add a generation start time to Job.", "ok"],
+      ["Expected duration", "vLLM-Omni returns <code>inference_time_s</code> on completion.", "Learn it in the backend per model + clip length + resolution.", "mid"]
+    ],
+    tagOk: "Small", tagMid: "Medium",
+    openTitle: "To discuss",
+    open: [
+      "Should the card start expanded, or collapsed to one line until opened?",
+      "Who writes and checks the tips and model notes, and how do they stay in sync when models change?",
+      "Should a tip stop appearing after someone has seen it a few times? Where is that kept (a UI preference, not project data)?",
+      "For generations an Agent submitted, does the card show the same way, and should it say an Agent submitted it?",
+      "Option 1's open questions still stand: service-queue estimates, multi-GPU concurrency, several jobs on one node."
+    ]
+  }
+};
+
+let lang = "zh-CN";
+try { const s = localStorage.getItem("gw1b-lang"); if (s && I18N[s]) lang = s; } catch {}
+let scenario = "local3", mode = "optionB", speed = 10, t = 0, playing = false, last = 0, selected = 0, collapsed = false;
+const L = () => I18N[lang];
+const $ = (id) => document.getElementById(id);
+const fmt = (sec) => { sec = Math.max(0, Math.floor(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+const fill = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]);
+const plural = (tpl, n) => fill(n === 1 ? tpl.one : tpl.n, { n });
+const minutes = (sec) => lang === "zh-CN" ? `${Math.round(sec / 60)} 分钟` : `${Math.round(sec / 60)} min`;
+const bucket = (tpl, sec) => sec < 45 ? tpl.lt : fill(tpl.n, { n: `${Math.max(1, Math.round(sec / 60))}` });
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---------- Simulation ----------
+function plan(sc) {
+  let extStart = 0;
+  const ext = sc.ext.map((e, i) => { const start = i === 0 ? -e.ago : extStart; const end = start + e.actual; extStart = end; return { start, end }; });
+  const serverFree = ext.length ? ext[ext.length - 1].end : 0;
+  let prevDone = 0;
+  const jobs = sc.jobs.map((j, i) => {
+    const lockAt = i === 0 ? 0 : prevDone, accepted = lockAt + PREP + SUBMIT;
+    const genStart = i === 0 ? Math.max(accepted, serverFree) : accepted, genEnd = genStart + j.actual, doneAt = genEnd + FIN;
+    prevDone = doneAt;
+    return { i, lockAt, accepted, genStart, genEnd, doneAt, actual: j.actual };
+  });
+  return { ext, jobs, end: jobs[jobs.length - 1].doneAt };
+}
+function phaseOf(j, time) {
+  if (time < j.lockAt) return "local";
+  if (time < j.lockAt + PREP) return "preparing";
+  if (time < j.accepted) return "submitting";
+  if (time < j.genStart) return "server";
+  if (time < j.genEnd) return "generating";
+  if (time < j.doneAt) return "finishing";
+  return "done";
+}
+function extRemaining(P, X, time) {
+  return P.ext.reduce((sum, e) => time >= e.end ? sum : sum + (time >= e.start ? Math.max(X - (time - e.start), 15) : X), 0);
+}
+function remaining(P, X, k, time) {
+  const j = P.jobs[k], ph = phaseOf(j, time);
+  switch (ph) {
+    case "done": return 0;
+    case "finishing": return Math.max(j.doneAt - time, 1);
+    case "generating": return Math.max(X - (time - j.genStart), 15) + FIN;
+    case "server": return extRemaining(P, X, time) + X + FIN;
+    case "preparing": case "submitting": return (j.accepted - time) + (k === 0 ? extRemaining(P, X, time) : 0) + X + FIN;
+    case "local": return remaining(P, X, k - 1, time) + PREP + SUBMIT + X + FIN;
+  }
+}
+const started = () => t > 0 || playing;
+
+// ---------- Node overlay ----------
+function outline(w, h, inset) {
+  const R = 11, r = Math.max(0, Math.min(R - inset, w / 2, h / 2));
+  const x0 = inset, y0 = inset, x1 = w - inset, y1 = h - inset, k = r * (1 - Math.SQRT1_2);
+  return [`M${x0 + k},${y0 + k}`, `A${r},${r} 0 0 1 ${x0 + r},${y0}`, `H${x1 - r}`, `A${r},${r} 0 0 1 ${x1},${y0 + r}`, `V${y1 - r}`,
+    `A${r},${r} 0 0 1 ${x1 - r},${y1}`, `H${x0 + r}`, `A${r},${r} 0 0 1 ${x0},${y1 - r}`, `V${y0 + r}`, `A${r},${r} 0 0 1 ${x0 + k},${y0 + k}`].join(" ");
+}
+const BG = `<div class="cw-generating-field"><i></i><i></i><i></i><i></i></div><div class="cw-generating-stars"></div><div class="cw-generating-sheen"></div>`;
+const RING = `<svg class="cw-generating-ring" aria-hidden="true"><path class="cw-generating-ring-track" pathLength="100"/><path class="cw-generating-ring-progress" pathLength="100" stroke-dasharray="100 100"/></svg>`;
+const estimatedProgress = (e, x) => (x > 0 && e > 0) ? 0.97 * (1 - Math.exp((-2.5 * e) / x)) : 0;
+function setRing(el, prog, overdue) {
+  const svg = el.querySelector("svg"); if (!svg) return;
+  const d = outline(svg.clientWidth, svg.clientHeight, 1);
+  svg.querySelectorAll("path").forEach((p) => p.setAttribute("d", d));
+  svg.querySelector(".cw-generating-ring-progress").setAttribute("stroke-dashoffset", 100 - prog * 100);
+  svg.classList.toggle("overdue", !!overdue);
+}
+
+const nodeState = [];
+function buildNodes() {
+  const sc = SCENARIOS[scenario];
+  if (selected >= sc.jobs.length) selected = 0;
+  $("nodes").className = "nodes" + (sc.jobs.length === 1 ? " single" : "");
+  $("nodes").innerHTML = sc.jobs.map((_, i) => `<div class="node-wrap${i === selected ? " selected" : ""}" data-wrap="${i}" role="button" tabindex="0" aria-pressed="${i === selected}">
+      <div class="node-title"><span>▣</span><b>${L().nodeNames[i]}</b><span class="took" data-took="${i}"></span></div>
+      <div class="node" data-node="${i}"></div></div>`).join("");
+  nodeState.length = 0;
+  sc.jobs.forEach(() => nodeState.push({ key: "", sub: "" }));
+  composerKey = "";
+}
+
+function renderNodes() {
+  const sc = SCENARIOS[scenario], P = plan(sc), X = sc.expected;
+  P.jobs.forEach((j, i) => {
+    const el = document.querySelector(`[data-node="${i}"]`), st = nodeState[i];
+    const ph = started() ? phaseOf(j, t) : "idle";
+    document.querySelector(`[data-took="${i}"]`).textContent = ph === "done" && mode !== "today" ? "· " + fill(L().took, { t: fmt(j.actual) }) : "";
+    const group = ph === "idle" ? "idle" : ph === "done" ? "done" : "gen";
+    const key = `${mode === "today" ? "today" : "opt"}|${group}|${lang}`;
+    if (key !== st.key) {
+      st.key = key; st.sub = "";
+      if (group === "idle") el.innerHTML = "";
+      else if (group === "done") el.innerHTML = `<div class="node-media arrive${NODES[i].media}"><div class="sun"></div><div class="hill"></div></div>`;
+      else if (mode === "today") el.innerHTML = `<div class="cw-generating">${BG}${RING}<div class="cw-generating-caption" role="status"><span class="cw-generating-indicator"></span><span class="cap"></span></div></div>`;
+      else el.innerHTML = `<div class="cw-generating">${BG}${RING}<div class="wt" role="status"><span class="wt-chip"><span class="cw-generating-indicator"></span><span class="chip"></span></span><div class="wt-big"></div><div class="wt-sub"></div></div><div class="wt-foot"></div></div>`;
+    }
+    if (group !== "gen") return;
+    const ov = el.querySelector(".cw-generating"), svg = el.querySelector("svg");
+    if (mode === "today") {
+      const tp = ph === "local" ? "queued" : ph === "server" ? "generating" : ph;
+      ov.dataset.phase = tp;
+      el.querySelector(".cap").textContent = L().today[tp];
+      let prog = tp === "queued" ? null : estimatedProgress(t, X);
+      if (ph === "finishing") prog = Math.max(prog, 0.98);
+      svg.style.display = prog === null ? "none" : "";
+      if (prog !== null) setRing(el, prog, false);
+      return;
+    }
+    const queued = ph === "local" || ph === "server";
+    ov.dataset.phase = queued ? "queued" : ph === "finishing" ? "finishing" : "generating";
+    const rem = remaining(P, X, i, t), elapsed = t - j.genStart, overdue = ph === "generating" && elapsed > X;
+    const basis = sc.samples > 0 ? fill(L().basis, { x: minutes(X), n: sc.samples }) : fill(L().basisNone, { x: minutes(X) });
+    let chip = "", big = "", bigText = false, sub = "", foot = "", warn = false;
+    if (ph === "local") {
+      const ahead = P.jobs.filter((o) => o.i < i && phaseOf(o, t) !== "done").length;
+      chip = fill(L().chip.local, { pos: ahead + 1 }); big = bucket(L().startsIn, rem - X - FIN); bigText = true;
+      sub = plural(L().ahead, ahead); foot = bucket(L().doneIn, rem);
+    } else if (ph === "server") {
+      chip = L().chip.server; big = plural(L().serverAhead, P.ext.filter((e) => t < e.end).length); bigText = true;
+      sub = bucket(L().startsIn, rem - X - FIN); foot = L().serverSub;
+    } else if (ph === "preparing" || ph === "submitting") {
+      chip = L().chip[ph]; big = L().startSoon; bigText = true; sub = bucket(L().doneIn, rem); foot = basis;
+    } else if (ph === "generating") {
+      chip = L().chip.generating; big = fmt(elapsed);
+      if (overdue) { sub = L().overdue; warn = true; foot = fill(L().basisShort, { x: minutes(X) }); }
+      else { sub = bucket(L().left, rem); foot = basis; }
+    } else if (ph === "finishing") {
+      chip = L().chip.finishing; big = fmt(j.genEnd - j.genStart); sub = L().almost;
+    }
+    el.querySelector(".chip").textContent = chip;
+    const bigEl = el.querySelector(".wt-big"); bigEl.textContent = big; bigEl.classList.toggle("text", bigText);
+    const subEl = el.querySelector(".wt-sub");
+    if (sub !== st.sub) {
+      const jumped = st.sub && queued; st.sub = sub; subEl.textContent = sub;
+      if (jumped) { subEl.classList.add("changed"); setTimeout(() => subEl.classList.remove("changed"), 900); }
+    }
+    subEl.classList.toggle("warn", warn);
+    el.querySelector(".wt-foot").textContent = foot;
+    if (queued || ph === "preparing" || ph === "submitting") svg.style.display = "none";
+    else { svg.style.display = ""; setRing(el, ph === "finishing" ? 0.98 : Math.min(elapsed / X, 0.95), overdue); }
+  });
+}
+
+// ---------- Composer / wait card ----------
+function refThumb(r) {
+  if (r.kind === "audio") return `<span class="thumb audio">♪</span>`;
+  return `<span class="thumb ${r.cls}${r.kind === "video" ? " video" : ""}"></span>`;
+}
+function refName(r) { return r.nameKey !== undefined ? L().nodeNames[r.nameKey] : r.name; }
+function chooseTips(n, overdue) {
+  const list = [];
+  if (overdue && n.res === "768P") list.push(["slow768", true]);
+  if (n.mode === "continuation") list.push(["continuation"]);
+  if (n.refs.some((r) => r.kind === "audio")) list.push(["refAudio"]);
+  if (n.mode === "reference") list.push(["reference"]);
+  if (n.mode === "first_frame") list.push(["firstFrame"]);
+  list.push(["sound"]);
+  return list.slice(0, 2);
+}
+let composerKey = "";
+function renderComposer() {
+  const sc = SCENARIOS[scenario], P = plan(sc), i = selected, n = NODES[i], j = P.jobs[i];
+  const ph = started() ? phaseOf(j, t) : "idle";
+  const running = ph !== "idle" && ph !== "done";
+  const overdue = ph === "generating" && t - j.genStart > sc.expected;
+  const frames = n.dur * FPS;
+  const tips = chooseTips(n, overdue);
+  const know = sc.samples === 0 ? L().know.first : fill(L().know.frames, { d: n.dur, f: frames });
+  const multi = sc.jobs.length > 1;
+  const key = [mode, running, collapsed, lang, i, scenario, tips.map((x) => x[0]).join(), know].join("|");
+  if (key === composerKey) return;
+  composerKey = key;
+  const label = multi ? `<div class="sel-label">${fill(L().selected, { name: L().nodeNames[i] })}</div>` : "";
+  const refs = `<div class="refs">${n.refs.map(refThumb).join("")}</div>`;
+  const chips = `<div class="chips"><span>${L().chipModel}</span><span>${L().modeName[n.mode]}</span><span>${n.res}</span><span>${n.dur}s</span><span>@</span></div>`;
+  if (mode !== "optionB" || !running) {
+    $("composerArea").innerHTML = `${label}<div class="composer${running ? " running" : ""}">${refs}<div class="prompt">${esc(L().prompts[i])}</div>
+      <div class="crow">${chips}<button class="run${running ? " cancel" : ""}" type="button" aria-label="${running ? L().cancel : "run"}"></button></div></div>`;
+    return;
+  }
+  const tipHtml = tips.map(([k, hot]) => `<li class="${hot ? "hot" : ""}">${L().tips[k]}</li>`).join("");
+  const firstTip = tips.length ? L().tips[tips[0][0]] : "";
+  const head = `<div class="wc-head"><span class="wc-title"><span class="cw-generating-indicator"></span>${L().cardTitle0}</span>
+      ${collapsed ? `<span class="wc-collapsed-line">${esc(fill(L().collapsedLine, { mode: L().modeName[n.mode], d: n.dur, res: n.res, tip: firstTip }))}</span>`
+        : `<span class="wc-tag">${L().modeName[n.mode]}</span><span class="wc-tag">${L().chipModel}</span><span class="wc-spacer"></span>`}
+      <button class="wc-btn" type="button" data-act="toggle">${collapsed ? L().expand : L().collapse}</button>
+      <button class="wc-btn stop" type="button">${L().cancel}</button></div>`;
+  const body = `<div class="wc-body"${collapsed ? " hidden" : ""}>
+      <div><div class="wc-label">${L().secWhat}</div><div class="wc-prompt">${esc(L().prompts[i])}</div>
+        <div class="wc-refs">${n.refs.map((r) => `<span class="wc-ref">${refThumb(r)}<span><b>${L().roleName[r.role]}</b> · ${esc(refName(r))}</span></span>`).join("")}</div></div>
+      <div><div class="wc-label">${L().secParams}</div><div class="wc-params">
+        <span>${fill(L().pFrames, { d: n.dur, fps: FPS, f: frames })}</span><span>${fill(L().pRes, { res: n.res, px: RES[n.res] })}</span><span>${L().pAV}</span></div>
+        <div class="wc-hint">${L().paramHint}</div></div>
+      ${tips.length ? `<div><div class="wc-label">${L().secTips}</div><ul class="wc-tips">${tipHtml}</ul></div>` : ""}
+      <div><div class="wc-label">${L().secKnow}</div><div class="wc-know">${know}</div></div>
+    </div>
+    ${collapsed ? "" : `<div class="wc-foot">${L().footer}</div>`}`;
+  $("composerArea").innerHTML = `${label}<div class="wcard">${head}${body}</div>`;
+}
+
+// ---------- HUD, toasts, timeline, controls ----------
+function renderHud() {
+  const sc = SCENARIOS[scenario], P = plan(sc);
+  $("modeBadge").textContent = L().badge[mode];
+  if (mode === "today" || sc.jobs.length < 2 || !started()) { $("hud").hidden = true; return; }
+  const ph = P.jobs.map((j) => phaseOf(j, t));
+  const run = ph.filter((p) => ["preparing", "submitting", "generating", "finishing"].includes(p)).length;
+  const wait = ph.filter((p) => p === "local" || p === "server").length;
+  $("hud").hidden = false;
+  $("hudText").textContent = run + wait === 0 ? L().hudDone : wait === 0 ? fill(L().hudRun, { run }) : fill(L().hud, { run, wait });
+}
+let toastKey = "";
+function renderToasts() {
+  const list = t >= 0.3 && t < 4 ? [L().toastSubmitted] : [];
+  const k = lang + list.join(); if (k === toastKey) return; toastKey = k;
+  $("toasts").innerHTML = list.map((m) => `<div class="toast">${m}</div>`).join("");
+}
+function renderTimeline() {
+  const sc = SCENARIOS[scenario], P = plan(sc), tl = L().tl, rows = [];
+  P.jobs.forEach((j, i) => {
+    const name = sc.jobs.length > 1 ? `${L().nodeNames[i]} · ` : "";
+    if (j.lockAt > 0) rows.push([0, name + tl.lockQ]);
+    rows.push([j.lockAt, name + tl.prep]);
+    if (j.genStart > j.accepted) rows.push([j.accepted, name + tl.serverQ]);
+    rows.push([j.genStart, name + tl.gen]);
+    rows.push([j.doneAt, name + tl.done]);
+  });
+  rows.sort((a, b) => a[0] - b[0]);
+  let now = -1; rows.forEach(([at], i) => { if (t >= at && started()) now = i; });
+  $("timeline").innerHTML = rows.map(([at, txt], i) => `<div class="${i === now ? "now" : i < now ? "past" : ""}"><span>${fmt(at)}</span><span>${txt}</span></div>`).join("");
+}
+function renderControls() {
+  const P = plan(SCENARIOS[scenario]);
+  $("clock").textContent = fmt(t);
+  $("scrub").value = Math.round((t / (P.end + 8)) * 1000);
+  $("scDesc").textContent = L().scDesc[scenario];
+}
+function renderAll() { renderNodes(); renderComposer(); renderHud(); renderToasts(); renderTimeline(); renderControls(); }
+
+const listHtml = (arr) => arr.map((c) => `<li>${c}</li>`).join("");
+const tagHtml = (d) => `<span class="tag ${d}">${d === "ok" ? L().tagOk : L().tagMid}</span>`;
+function renderStatic() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => { const v = L()[el.dataset.i18n]; if (typeof v === "string") el.innerHTML = v; });
+  document.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  $("scenarioSeg").innerHTML = SC_ORDER.map((s) => `<button type="button" data-s="${s}" aria-pressed="${s === scenario}">${L().sc[s]}</button>`).join("");
+  setPressed($("modeSeg"), "m", mode); setPressed($("speedSeg"), "x", speed);
+  $("layerNode").innerHTML = listHtml(L().layerNode);
+  $("layerCard").innerHTML = listHtml(L().layerCard);
+  $("tipRules").innerHTML = listHtml(L().tipRules);
+  $("openList").innerHTML = listHtml(L().open);
+  $("cardTable").innerHTML = `<thead><tr>${L().cardHead.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${
+    L().cardRows.map(([a, b, c, d]) => `<tr><td><b>${a}</b></td><td>${b}</td><td>${c}</td><td>${tagHtml(d)}</td></tr>`).join("")}</tbody>`;
+  $("srcTable").innerHTML = `<thead><tr>${L().srcHead.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${
+    L().src.map(([a, b, c, d]) => `<tr><td><b>${a}</b></td><td>${b}</td><td>${c}</td><td>${tagHtml(d)}</td></tr>`).join("")}</tbody>`;
+  $("playBtn").textContent = playing ? L().pause : L().play;
+  buildNodes(); toastKey = "";
+  renderAll();
+}
+function setPressed(seg, attr, value) { seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === String(value)))); }
+
+function tick(now) {
+  if (!playing) return;
+  const dt = Math.max(0, (now - last) / 1000); last = now;
+  const end = plan(SCENARIOS[scenario]).end + 8;
+  t = Math.min(end, t + dt * speed);
+  if (t >= end) stop();
+  renderAll();
+  if (playing) requestAnimationFrame(tick);
+}
+function stop() { playing = false; $("playBtn").textContent = L().play; }
+function select(i) {
+  selected = i;
+  document.querySelectorAll("[data-wrap]").forEach((w) => { const on = Number(w.dataset.wrap) === i; w.classList.toggle("selected", on); w.setAttribute("aria-pressed", String(on)); });
+  renderComposer();
+}
+
+document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("click", () => {
+  lang = b.dataset.lang; try { localStorage.setItem("gw1b-lang", lang); } catch {} renderStatic();
+}));
+$("scenarioSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  scenario = b.dataset.s; setPressed($("scenarioSeg"), "s", scenario); t = 0; stop(); selected = 0; buildNodes(); renderAll();
+});
+$("modeSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  mode = b.dataset.m; setPressed($("modeSeg"), "m", mode); renderAll();
+});
+$("speedSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; speed = Number(b.dataset.x); setPressed($("speedSeg"), "x", speed); });
+$("playBtn").addEventListener("click", () => {
+  if (t >= plan(SCENARIOS[scenario]).end + 8) t = 0;
+  playing = !playing; $("playBtn").textContent = playing ? L().pause : L().play;
+  if (playing) { last = performance.now(); requestAnimationFrame(tick); }
+  renderAll();
+});
+$("resetBtn").addEventListener("click", () => { t = 0; stop(); buildNodes(); renderAll(); });
+$("scrub").addEventListener("input", (e) => { t = (Number(e.target.value) / 1000) * (plan(SCENARIOS[scenario]).end + 8); renderAll(); });
+$("nodes").addEventListener("click", (e) => { const w = e.target.closest("[data-wrap]"); if (w) select(Number(w.dataset.wrap)); });
+$("nodes").addEventListener("keydown", (e) => { const w = e.target.closest("[data-wrap]"); if (w && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(Number(w.dataset.wrap)); } });
+$("composerArea").addEventListener("click", (e) => { if (e.target.closest('[data-act="toggle"]')) { collapsed = !collapsed; composerKey = ""; renderComposer(); } });
+new ResizeObserver(() => renderNodes()).observe($("nodes"));
+
+// URL state for screenshots and links: ?lang=zh-CN&sc=local3&m=optionB&t=200&sel=1&shot=1
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("lang") && I18N[q.get("lang")]) lang = q.get("lang");
+  if (q.get("sc") && SCENARIOS[q.get("sc")]) scenario = q.get("sc");
+  if (q.get("m") && document.querySelector(`[data-m="${q.get("m")}"]`)) mode = q.get("m");
+  if (q.get("sel") && typeof selected !== "undefined") selected = Number(q.get("sel")) || 0;
+  if (q.get("t")) t = Math.max(0, Number(q.get("t")) || 0);
+  if (q.get("shot") === "1") document.body.classList.add("shot");
+})();
+
+renderStatic();
+</script>
+</body>
+</html>
